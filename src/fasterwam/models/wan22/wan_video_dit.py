@@ -209,7 +209,7 @@ class CrossAttention(nn.Module):
         self.o = nn.Linear(self.attn_hidden_dim, hidden_dim)
         self.norm_q = RMSNorm(self.attn_hidden_dim, eps=eps)
         self.norm_k = RMSNorm(self.attn_hidden_dim, eps=eps)
-            
+
         # self.attn = AttentionModule(self.num_heads)
 
     def forward(self, x: torch.Tensor, ctx: torch.Tensor, ctx_mask: Optional[torch.Tensor] = None):
@@ -226,6 +226,7 @@ class GateModule(nn.Module):
 
     def forward(self, x, gate, residual):
         return x + gate * residual
+
 
 class DiTBlock(nn.Module):
     def __init__(self,  hidden_dim: int, attn_head_dim: int, num_heads: int, ffn_dim: int, eps: float = 1e-6):

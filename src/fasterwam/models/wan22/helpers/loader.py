@@ -14,6 +14,7 @@ from ..wan_video_text_encoder import HuggingfaceTokenizer, WanTextEncoder
 from ..wan_video_vae import WanVideoVAE38
 from fasterwam.utils.logging_config import get_logger
 
+
 logger = get_logger(__name__)
 SKIPPED_PRETRAIN_SENTINEL = "SKIPPED_PRETRAIN"
 
