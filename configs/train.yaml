@@ -44,5 +44,5 @@ hydra:
   job:
     chdir: false
   run:
-    dir: .
+    dir: ${output_dir}
   output_subdir: null

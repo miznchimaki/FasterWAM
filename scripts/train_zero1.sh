@@ -102,15 +102,20 @@ print(run_id)
 PY
     )"
 
-    echo "[run_id_sync] mode=tcpstore host=${RUN_ID_SYNC_HOST} port=${RUN_ID_SYNC_PORT} timeout_s=${RUN_ID_SYNC_TIMEOUT} run_id=${RUN_ID}"
+    RUN_ID_SYNC_MESSAGE="[run_id_sync] mode=tcpstore host=${RUN_ID_SYNC_HOST} port=${RUN_ID_SYNC_PORT} timeout_s=${RUN_ID_SYNC_TIMEOUT} run_id=${RUN_ID}"
   fi
 fi
 
-echo "[launch] nproc_per_node=${NPROC_PER_NODE} num_machines=${NUM_MACHINES} machine_rank=${MACHINE_RANK} run_id=${RUN_ID}"
-
 TOTAL_PROCESSES=$((NPROC_PER_NODE * NUM_MACHINES))
 
-accelerate launch \
+TRAIN_ARGS=(
+  "output_dir=./runs/${TASK_BASENAME}/${RUN_ID}"
+  "wandb.name=${TASK_BASENAME}"
+  "${EXTRA_ARGS[@]}"
+)
+source "$(dirname -- "${BASH_SOURCE[0]}")/training_logging.sh"
+
+run_training_with_log accelerate launch \
   --config_file scripts/accelerate_configs/accelerate_zero1_ds.yaml \
   --num_processes "${TOTAL_PROCESSES}" \
   --num_machines "${NUM_MACHINES}" \
@@ -118,7 +123,4 @@ accelerate launch \
   --main_process_ip "${MAIN_PROCESS_IP}" \
   --main_process_port "${MAIN_PROCESS_PORT}" \
   --deepspeed_multinode_launcher "standard" \
-  scripts/train.py \
-  "output_dir=./runs/${TASK_BASENAME}/${RUN_ID}" \
-  "wandb.name=${TASK_BASENAME}" \
-  "${EXTRA_ARGS[@]}"
+  scripts/train.py
