@@ -10,8 +10,15 @@ from fasterwam.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-    
-def flash_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, num_heads: int, ctx_mask: Optional[torch.Tensor] = None, compatibility_mode=True):
+
+def flash_attention(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    num_heads: int,
+    ctx_mask: Optional[torch.Tensor] = None,
+    compatibility_mode=True
+):
     if compatibility_mode:
         q = rearrange(q, "b s (n d) -> b n s d", n=num_heads)
         k = rearrange(k, "b s (n d) -> b n s d", n=num_heads)
@@ -20,8 +27,9 @@ def flash_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, num_heads
         x = rearrange(x, "b n s d -> b s (n d)", n=num_heads)
         return x
     else:
-        raise NotImplementedError("Only compatibility mode is implemented for flash attention. Please set compatibility_mode=True.")
-
+        raise NotImplementedError(
+            "Only compatibility mode is implemented for flash attention. Please set compatibility_mode=True."
+        )
 
 
 def modulate(x: torch.Tensor, shift: torch.Tensor, scale: torch.Tensor):
@@ -29,8 +37,10 @@ def modulate(x: torch.Tensor, shift: torch.Tensor, scale: torch.Tensor):
 
 
 def sinusoidal_embedding_1d(dim, position):
-    sinusoid = torch.outer(position.type(torch.float64), torch.pow(
-        10000, -torch.arange(dim//2, dtype=torch.float64, device=position.device).div(dim//2)))
+    sinusoid = torch.outer(
+        position.type(torch.float64),
+        torch.pow(10000, -torch.arange(dim // 2, dtype=torch.float64, device=position.device).div(dim // 2))
+    )
     x = torch.cat([torch.cos(sinusoid), torch.sin(sinusoid)], dim=1)
     return x.to(position.dtype)
 
@@ -45,8 +55,7 @@ def precompute_freqs_cis_3d(dim: int, end: int = 1024, theta: float = 10000.0):
 
 def precompute_freqs_cis(dim: int, end: int = 1024, theta: float = 10000.0):
     # 1d rope precompute
-    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)
-                   [: (dim // 2)].double() / dim))
+    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].double() / dim))
     freqs = torch.outer(torch.arange(end, device=freqs.device), freqs)
     freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
     return freqs_cis
@@ -238,13 +247,17 @@ class DiTBlock(nn.Module):
 
         self.self_attn = SelfAttention(hidden_dim, attn_head_dim, num_heads, eps)
         self.cross_attn = CrossAttention(
-            hidden_dim, attn_head_dim, num_heads, eps)
+            hidden_dim, attn_head_dim, num_heads, eps
+        )
         self.norm1 = nn.LayerNorm(hidden_dim, eps=eps, elementwise_affine=False)
         self.norm2 = nn.LayerNorm(hidden_dim, eps=eps, elementwise_affine=False)
         self.norm3 = nn.LayerNorm(hidden_dim, eps=eps)
-        self.ffn = nn.Sequential(nn.Linear(hidden_dim, ffn_dim), nn.GELU(
-            approximate='tanh'), nn.Linear(ffn_dim, hidden_dim))
-        self.modulation = nn.Parameter(torch.randn(1, 6, hidden_dim) / hidden_dim**0.5)
+        self.ffn = nn.Sequential(
+            nn.Linear(hidden_dim, ffn_dim),
+            nn.GELU(approximate='tanh'),
+            nn.Linear(ffn_dim, hidden_dim)
+        )
+        self.modulation = nn.Parameter(torch.randn(1, 6, hidden_dim) / hidden_dim ** 0.5)
         self.gate = GateModule()
 
     def forward(self, x, context, t_mod, freqs, context_mask=None, self_attn_mask: Optional[torch.Tensor] = None):
@@ -296,7 +309,7 @@ class Head(nn.Module):
         self.patch_size = patch_size
         self.norm = nn.LayerNorm(dim, eps=eps, elementwise_affine=False)
         self.head = nn.Linear(dim, out_dim * math.prod(patch_size))
-        self.modulation = nn.Parameter(torch.randn(1, 2, dim) / dim**0.5)
+        self.modulation = nn.Parameter(torch.randn(1, 2, dim) / dim ** 0.5)
 
     def forward(self, x, t_mod):
         if len(t_mod.shape) == 3:
@@ -366,7 +379,8 @@ class WanVideoDiT(torch.nn.Module):
         assert require_vae_embedding == False and fuse_vae_embedding_in_latents == True, "Only support fusing vae embedding in latents"
 
         self.patch_embedding = nn.Conv3d(
-            in_dim, hidden_dim, kernel_size=patch_size, stride=patch_size)
+            in_dim, hidden_dim, kernel_size=patch_size, stride=patch_size
+        )
         self.text_embedding = nn.Sequential(
             nn.Linear(text_dim, hidden_dim),
             nn.GELU(approximate='tanh'),
@@ -538,7 +552,7 @@ class WanVideoDiT(torch.nn.Module):
         if self.seperated_timestep and fuse_vae_embedding_in_latents:
             if not hasattr(self, "patch_size") or len(self.patch_size) < 3:
                 raise ValueError(f"Invalid dit.patch_size: {getattr(self, 'patch_size', None)}")
-            
+
             token_timesteps = torch.ones(
                 (batch_size, x.shape[2], tokens_per_frame),
                 dtype=timestep.dtype,
@@ -561,13 +575,15 @@ class WanVideoDiT(torch.nn.Module):
         if self.action_conditioned and action is not None:
             action_len = action.shape[1]
             action_emb = self.action_embedding(action) # (B, action_len, dim)
-            action_pos_embed = sinusoidal_embedding_1d(self.hidden_dim, 
-                torch.arange(action_len, device=action_emb.device)) # (action_len, dim)
+            action_pos_embed = sinusoidal_embedding_1d(
+                self.hidden_dim, 
+                torch.arange(action_len, device=action_emb.device)
+            )  # (action_len, dim)
             action_emb = action_emb + action_pos_embed.unsqueeze(0) # (B, action_len, dim)
             context = torch.cat([context, action_emb], dim=1) # (B, context_len + action_len, dim)
 
             # new mask
-            num_temporal_groups = f - 1 # first latent frame do not attend to actions
+            num_temporal_groups = f - 1  # first latent frame do not attend to actions
             if num_temporal_groups <= 0:
                 raise ValueError(
                     "Action-conditioned context mask requires at least 2 latent frames when `action` is provided."
@@ -580,12 +596,16 @@ class WanVideoDiT(torch.nn.Module):
                 num_query_per_group=tokens_per_frame,
                 num_key_per_group=action_len // num_temporal_groups,
                 mode=self.action_group_causal_mask_mode,
-            ).to(context.device) # ((f-1)*tokens_per_frame, action_len)
+            ).to(context.device)  # ((f-1)*tokens_per_frame, action_len)
 
-            seq_len = f * h * w # query length
-            final_context_mask = torch.zeros((batch_size, seq_len, context.shape[1]), dtype=torch.bool, device=context.device) # (B, seq_len, L + action_len)
+            seq_len = f * h * w  # query length
+            final_context_mask = torch.zeros(
+                (batch_size, seq_len, context.shape[1]),
+                dtype=torch.bool,
+                device=context.device
+            ) # (B, seq_len, L + action_len)
             # all latent frames attend to text tokens
-            final_context_mask[:, :, :context_len] = context_mask.unsqueeze(1).expand(-1, seq_len, -1) # (B, seq_len, L)
+            final_context_mask[:, :, : context_len] = context_mask.unsqueeze(1).expand(-1, seq_len, -1) # (B, seq_len, L)
             # latent frames from the 2nd one attend to action tokens
             final_context_mask[:, tokens_per_frame:, context_len:] = action_group_mask.unsqueeze(0).expand(batch_size, -1, -1) # (B, seq_len, action_len)
             context_mask = final_context_mask
@@ -659,9 +679,21 @@ class WanVideoDiT(torch.nn.Module):
                 x_tokens = gradient_checkpoint_forward(
                     block,
                     self.use_gradient_checkpointing,
-                    x_tokens, context_emb, t_mod, freqs, context_mask=context_attn_mask, self_attn_mask=self_attn_mask
+                    x_tokens,
+                    context_emb,
+                    t_mod,
+                    freqs,
+                    context_mask=context_attn_mask,
+                    self_attn_mask=self_attn_mask
                 )
             else:
-                x_tokens = block(x_tokens, context_emb, t_mod, freqs, context_mask=context_attn_mask, self_attn_mask=self_attn_mask)
+                x_tokens = block(
+                    x_tokens,
+                    context_emb,
+                    t_mod,
+                    freqs,
+                    context_mask=context_attn_mask,
+                    self_attn_mask=self_attn_mask
+                )
 
         return self.post_dit(x_tokens, pre_state)

@@ -389,6 +389,7 @@ def run_training(cfg: DictConfig):
     )
     trainer.train()
 
+
 def run_inference(cfg: DictConfig):
     setup_logging(log_level=logging.INFO)
     inference_cfg = cfg.inference

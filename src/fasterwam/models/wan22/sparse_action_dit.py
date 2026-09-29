@@ -40,7 +40,7 @@ class ActionOnlyDiTBlock(nn.Module):
             nn.GELU(approximate="tanh"),
             nn.Linear(ffn_dim, hidden_dim),
         )
-        self.modulation = nn.Parameter(torch.randn(1, 6, hidden_dim) / hidden_dim**0.5)
+        self.modulation = nn.Parameter(torch.randn(1, 6, hidden_dim) / hidden_dim ** 0.5)
         self.gate = GateModule()
 
     def forward(
