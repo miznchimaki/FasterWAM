@@ -15,6 +15,11 @@ from PIL import Image
 from torch.optim.lr_scheduler import ConstantLR, CosineAnnealingLR, LinearLR, SequentialLR
 from torch.utils.data import DataLoader
 
+from .utils.deepspeed_utils import (
+    build_weights_checkpoint_payload,
+    get_deepspeed_config,
+    get_deepspeed_stage,
+)
 from .utils.fs import ensure_dir
 from .utils.logging_config import get_logger, setup_logging
 from .utils.pytorch_utils import set_global_seed
@@ -61,11 +66,33 @@ class Wan22Trainer:
             mixed_precision=self.mixed_precision,
             step_scheduler_with_optimizer=False,
         )
+
+        self.zero_stage = get_deepspeed_stage(self.accelerator)
+        ds_config = get_deepspeed_config(self.accelerator)
+        if self.zero_stage is not None:
+            # Under DeepSpeed, clip_grad_norm_ only reports the norm; engine.step
+            # performs clipping. Set the actual threshold before prepare().
+            ds_config["gradient_clipping"] = self.max_grad_norm
+        if self.zero_stage == 3:
+            if self.eval_every > 0:
+                raise ValueError(
+                    "ZeRO-3 training requires eval_every=0. Run the existing evaluation "
+                    "scripts on the exported checkpoints/weights/*.pt after training; "
+                    "the in-training unwrapped video rollout is not ZeRO-3 compatible."
+                )
+            if not ds_config["zero_optimization"].get("stage3_gather_16bit_weights_on_model_save", False):
+                raise ValueError(
+                    "ZeRO-3 requires zero_optimization.stage3_gather_16bit_weights_on_model_save=true "
+                    "to export the evaluation .pt checkpoint."
+                )
+            from .utils.zero3_model import prepare_model_for_zero3
+
+            prepare_model_for_zero3(self.model)
         
         logger.info(
             "Accelerate training: distributed_type=%s zero_stage=%s world_size=%d process_index=%d cfg_mixed_precision=%s accelerator_mixed_precision=%s grad_accum=%d grad_clip=%.4f",
             self.accelerator.distributed_type,
-            self.accelerator.state.deepspeed_plugin.deepspeed_config.get("zero_optimization", {}).get("stage", "unknown"),
+            self.zero_stage,
             self.accelerator.num_processes,
             self.accelerator.process_index,
             self.mixed_precision,
@@ -78,6 +105,10 @@ class Wan22Trainer:
         self._assert_dataset_length_consistent(self.train_dataset, "train_dataset")
         if self.val_dataset is not None:
             self._assert_dataset_length_consistent(self.val_dataset, "val_dataset")
+
+        # A .pt warm start must precede optimizer master-weight creation and
+        # ZeRO partitioning. Full-state directories are restored after prepare.
+        self._load_initial_weights_checkpoint()
 
         # Freeze non-trainable modules before optimizer/deepspeed initialization.
         # This keeps DiT (+ optional proprio encoder) as trainable when ZeRO builds optimizer state.
@@ -271,11 +302,20 @@ class Wan22Trainer:
             logger.info("Resuming full training state from directory: %s", resume)
             self.load_training_state(str(resume_path))
             return
+
+        # File checkpoints were loaded before constructing the optimizer.
+
+    def _load_initial_weights_checkpoint(self):
+        if not self.resume:
+            return
+        resume_path = Path(str(self.resume))
+        if resume_path.is_dir():
+            return
         if not resume_path.exists():
-            raise FileNotFoundError(f"Resume checkpoint not found: {resume}")
-        logger.info("Loading weight checkpoint only: %s", resume)
-        self.accelerator.unwrap_model(self.model).load_checkpoint(str(resume_path), optimizer=None)
-        logger.warning("Loaded .pt weights only; optimizer/scheduler/step were not restored under ZeRO2.")
+            raise FileNotFoundError(f"Resume checkpoint not found: {self.resume}")
+        logger.info("Loading weight checkpoint before optimizer initialization: %s", self.resume)
+        self.model.load_checkpoint(str(resume_path), optimizer=None)
+        logger.warning("Loaded .pt weights only; optimizer/scheduler/step start fresh.")
 
     def _set_dit_only_train_mode(self):
         # Match DiffSynth's freeze_except("dit"): only DiT stays trainable/in-train-mode.
@@ -567,7 +607,16 @@ class Wan22Trainer:
     def _save_weights_checkpoint(self, step_tag: str):
         model = self.accelerator.unwrap_model(self.model)
         ckpt_path = os.path.join(self.weights_dir, f"{step_tag}.pt")
-        model.save_checkpoint(ckpt_path, optimizer=None, step=self.global_step)
+        if self.zero_stage == 3:
+            # Collective: EVERY rank participates. Accelerate/DeepSpeed gathers
+            # one layer at a time to CPU, avoiding a full-model GPU all-gather.
+            state_dict = self.accelerator.get_state_dict(self.model)
+            if not self.accelerator.is_main_process:
+                return None
+            payload = build_weights_checkpoint_payload(model, state_dict, step=self.global_step)
+            torch.save(payload, ckpt_path)
+        else:
+            model.save_checkpoint(ckpt_path, optimizer=None, step=self.global_step)
         return ckpt_path
 
     def _save_trainer_state(self, state_path: str):
@@ -585,7 +634,7 @@ class Wan22Trainer:
 
         self.accelerator.wait_for_everyone()
         ckpt_path = None
-        if self.accelerator.is_main_process:
+        if self.zero_stage == 3 or self.accelerator.is_main_process:
             ckpt_path = self._save_weights_checkpoint(step_tag=step_tag)
         self.accelerator.wait_for_everyone()
 
@@ -668,10 +717,11 @@ class Wan22Trainer:
                 continue
 
             with self.accelerator.accumulate(self.model):
-                train_model = self.model if hasattr(self.model, "training_loss") else self.accelerator.unwrap_model(self.model)
-
                 with self.accelerator.autocast():
-                    loss, loss_dict = train_model.training_loss(sample)
+                    # FastWAM.forward delegates to training_loss. Calling the
+                    # prepared model preserves DeepSpeed's forward/backward
+                    # hooks, including ZeRO-3 gathers and accumulation scaling.
+                    loss, loss_dict = self.model(sample)
                 self.accelerator.backward(loss)
 
                 if self.accelerator.sync_gradients:

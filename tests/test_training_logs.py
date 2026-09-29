@@ -167,8 +167,8 @@ class TrainingLoggingTests(unittest.TestCase):
     def _assert_success(self, result):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_both_launchers_capture_launcher_and_all_worker_streams_once(self):
-        for stage in (1, 2):
+    def test_all_launchers_capture_launcher_and_all_worker_streams_once(self):
+        for stage in (1, 2, 3):
             with self.subTest(stage=stage):
                 output_dir = self.root / f"zero{stage}"
                 result = self._launch(output_dir, stage=stage)

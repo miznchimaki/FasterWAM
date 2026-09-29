@@ -231,7 +231,7 @@ NPROC_PER_NODE=8 bash scripts/train_fasterwam_libero.sh \
   wandb.enabled=true
 ```
 
-The LIBERO/RoboTwin wrappers and `train_zero1.sh` / `train_zero2.sh` save the
+The LIBERO/RoboTwin wrappers and `train_zero1.sh` / `train_zero2.sh` / `train_zero3.sh` save the
 complete launcher and local worker stdout/stderr to `<output_dir>/train.log`,
 while also displaying it in the terminal. This includes training metrics,
 `print` output, progress bars, library warnings, and error tracebacks. Python
@@ -259,6 +259,84 @@ logging file in `output_dir`; use the launch scripts above for the complete
 stdout/stderr transcript. Existing logs and already-running jobs are unchanged.
 Each launch script invocation runs one experiment; start separate invocations
 for sweeps instead of passing Hydra's `--multirun` / `-m` option.
+
+### ZeRO-3 on four GPUs
+
+`scripts/train_zero3.sh` uses the same Hydra overrides and logging as the
+existing ZeRO-1/2 launchers. Its configuration is in
+`scripts/accelerate_configs/accelerate_zero3_ds.yaml` and
+`scripts/ds_configs/ds_zero3_config.json`. Run it from the repository root in
+the existing training environment; no additional package versions are needed.
+The integration targets the project's pinned Accelerate **1.12.0** and
+DeepSpeed **0.18.5**.
+
+For RoboTwin on four A800s, this example preserves the paper's global batch
+size of 1,024 and the task's default five epochs:
+
+```bash
+bash scripts/train_zero3.sh 4 \
+  task=robotwin_fasterwam_3cam_384_1e-4 \
+  batch_size=8 \
+  gradient_accumulation_steps=32 \
+  mixed_precision=bf16 \
+  eval_every=0
+```
+
+`batch_size` is **per GPU**: global batch size is
+`number_of_GPUs × batch_size × gradient_accumulation_steps`. For example,
+four GPUs with the task's default `batch_size=16` and accumulation of 2 use
+a global batch of 128. Adjust microbatch size to available memory and adjust
+accumulation accordingly; the example above is not a measured A800 memory or
+throughput result.
+
+The new configuration shards parameters, gradients, and optimizer state and
+does **not** offload parameters or the optimizer to CPU. It uses explicit
+bucket sizes because this custom model does not expose the Transformers
+`config.hidden_size` required by Accelerate's hidden-size-based `auto` values.
+`zero3_init_flag: false` preserves the existing custom pretrained-weight
+loading path: sharding begins at `Accelerator.prepare`, so each GPU must
+still fit the initial model before that point. ZeRO-3 also does not remove
+the need to fit activations for the selected microbatch.
+
+Checkpoint behavior:
+
+- All ranks participate in ZeRO-3 weight consolidation. Rank 0 writes the
+  ordinary `checkpoints/weights/step_XXXXXX.pt` with the existing `mot` and
+  optional `proprio_encoder` payload, usable by the existing evaluation code.
+- `resume=/path/to/checkpoints/state/step_XXXXXX` restores the distributed
+  training state, including optimizer, scheduler, and recorded data progress.
+  Keep the same ZeRO stage and GPU topology when resuming this state.
+- `resume=/path/to/checkpoints/weights/step_XXXXXX.pt` is a weights-only warm
+  start loaded **before** optimizer creation and partitioning. It starts a
+  fresh optimizer, scheduler, and step count; use this form to switch stages.
+- ZeRO-3 currently requires `eval_every=0` (already the RoboTwin and LIBERO
+  task default). Run the existing separate evaluation scripts on the exported
+  `.pt`; the trainer's unwrapped multi-step video rollout is not supported
+  with partitioned parameters.
+
+Before a full run, exercise training and both checkpoint formats with a small
+hardware smoke run, then resume its state with the same batch/accumulation
+settings and a larger `max_steps`:
+
+```bash
+bash scripts/train_zero3.sh 4 \
+  task=robotwin_fasterwam_3cam_384_1e-4 \
+  batch_size=1 gradient_accumulation_steps=2 \
+  max_steps=2 save_every=1 eval_every=0 \
+  output_dir=./runs/robotwin_zero3_smoke
+```
+
+The shared trainer also fixes three correctness issues affecting ZeRO-1/2:
+training now enters the prepared model's `forward` so DeepSpeed's backward
+and accumulation hooks run; `max_grad_norm` is passed to DeepSpeed's actual
+gradient-clipping configuration; and weights-only resumes precede optimizer
+master-weight initialization. Existing ZeRO-1/2 configuration files and
+launch scripts retain their settings.
+
+Implementation references: the versioned
+[Accelerate preparation and checkpoint code](https://github.com/huggingface/accelerate/blob/v1.12.0/src/accelerate/accelerator.py),
+[DeepSpeed forward/backward lifecycle](https://github.com/deepspeedai/DeepSpeed/blob/v0.18.5/deepspeed/runtime/engine.py),
+and [ZeRO-3 configuration schema](https://github.com/deepspeedai/DeepSpeed/blob/v0.18.5/deepspeed/runtime/zero/config.py).
 
 ## Released Checkpoints
 
