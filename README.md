@@ -231,6 +231,35 @@ NPROC_PER_NODE=8 bash scripts/train_fasterwam_libero.sh \
   wandb.enabled=true
 ```
 
+The LIBERO/RoboTwin wrappers and `train_zero1.sh` / `train_zero2.sh` save the
+complete launcher and local worker stdout/stderr to `<output_dir>/train.log`,
+while also displaying it in the terminal. This includes training metrics,
+`print` output, progress bars, library warnings, and error tracebacks. Python
+output is unbuffered, and a training failure still returns a nonzero exit code.
+For example:
+
+```text
+runs/libero_fasterwam_2cam224_1e-4/2026-09-24_14-43-18/train.log
+```
+
+An `output_dir=...` override changes both the experiment directory and the log
+location. Restarting with the same output directory appends to the existing log.
+You do not need to add a separate `tee train.log` or `> train.log 2>&1`:
+
+```bash
+NPROC_PER_NODE=4 bash scripts/train_fasterwam_robotwin.sh \
+  gradient_accumulation_steps=2 \
+  output_dir=./runs/robotwin/my_experiment
+```
+
+On multiple nodes, node 0 writes `train.log`; additional nodes write
+`train.node<N>.log` in the same experiment directory, each containing all local
+workers. Direct `python scripts/train.py` invocations place Hydra's Python
+logging file in `output_dir`; use the launch scripts above for the complete
+stdout/stderr transcript. Existing logs and already-running jobs are unchanged.
+Each launch script invocation runs one experiment; start separate invocations
+for sweeps instead of passing Hydra's `--multirun` / `-m` option.
+
 ## Released Checkpoints
 
 The released FasterWAM checkpoints and their corresponding dataset statistics
