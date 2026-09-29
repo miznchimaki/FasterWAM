@@ -116,7 +116,7 @@ fi
 _fasterwam_activate() {
     local _fw_name _fw_decl _fw_flags
     if declare -F _fasterwam_deactivate >/dev/null; then
-        _fasterwam_deactivate
+        _fasterwam_deactivate || return 1
     fi
     # Check before changing anything: readonly variables cannot be restored.
     for _fw_name in @MANAGED@; do
@@ -127,13 +127,23 @@ _fasterwam_activate() {
             return 1
         fi
     done
-    declare -gA _FASTERWAM_SAVED_DECL=()
+    # Bash 4.2 makes `declare -gA name=()` local despite -g. Keep declaration
+    # and assignment separate so the snapshot survives this function's return.
+    declare -gA _FASTERWAM_SAVED_DECL
+    _FASTERWAM_SAVED_DECL=()
     for _fw_name in @MANAGED@; do
         _FASTERWAM_SAVED_DECL[$_fw_name]=$(declare -p "$_fw_name" 2>/dev/null) || _FASTERWAM_SAVED_DECL[$_fw_name]=
     done
     _FASTERWAM_OLD_DEACTIVATE=$(declare -f deactivate) || _FASTERWAM_OLD_DEACTIVATE=
     _fasterwam_deactivate() {
-        local _fw_name _fw_decl _fw_flags _fw_old_function=$_FASTERWAM_OLD_DEACTIVATE
+        local _fw_name _fw_decl _fw_flags _fw_old_function=${_FASTERWAM_OLD_DEACTIVATE-}
+        # Do not silently delete the exit function if restoration is impossible.
+        _fw_decl=$(declare -p _FASTERWAM_SAVED_DECL 2>/dev/null) || _fw_decl=
+        _fw_flags=${_fw_decl#declare -}; _fw_flags=${_fw_flags%% *}
+        if [[ $_fw_flags != *A* ]] || [[ -z ${_FASTERWAM_SAVED_DECL[PATH]+present} ]]; then
+            echo "Cannot deactivate: saved shell state is missing. Open a fresh SSH terminal and activate again." >&2
+            return 1
+        fi
         for _fw_name in "${!_FASTERWAM_SAVED_DECL[@]}"; do
             _fw_decl=${_FASTERWAM_SAVED_DECL[$_fw_name]}
             unset "$_fw_name"

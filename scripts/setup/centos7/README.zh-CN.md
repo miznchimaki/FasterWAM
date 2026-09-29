@@ -154,6 +154,41 @@ ELF、glibc、已安装包、state.json 或依赖锁。其他 profile 可替换�
 旧版没有记录完整的激活前变量，无法追溯恢复：升级后第一次请在新打开的 SSH
 终端中激活；之后正常使用 `deactivate` 即可。
 
+CentOS 7 的 Bash 4.2 还存在一个已知问题：函数内的
+`declare -gA _FASTERWAM_SAVED_DECL=()` 会把本应全局的快照建成局部变量，
+函数返回后快照消失。症状是第一次 `deactivate` 不恢复 PATH，却删除了退出
+函数，第二次执行便提示 command not found。本版把声明与赋值拆为两条命令，
+并在快照丢失时明确报错、保留退出函数。只更新 `runtime.py` 不会自动修改已经
+生成的入口，仍须运行上面的 `refresh_centos7_shell.sh`。
+
+刷新后，在新 SSH 终端、尚未激活 FasterWAM 时核对一次：
+
+```bash
+cd /你的路径/FasterWAM
+fw_before_path=$PATH
+fw_before_python=$(command -v python || true)
+source .runtime/centos7/core/activate.sh
+command -v python
+deactivate
+[[ $PATH == "$fw_before_path" ]] && echo 'PASS PATH restored'
+[[ $(command -v python || true) == "$fw_before_python" ]] && echo 'PASS Python restored'
+unset fw_before_path fw_before_python
+```
+
+退出目标是恢复激活前状态；如果原来处于其他 venv/Conda 环境，会返回那个
+环境，不一定返回 `/usr/bin/python`。成功退出后，若原来没有 `deactivate`
+函数，再执行它提示 command not found 是正常的。不要在旧环境中只运行 `bash`
+或 `exec bash` 代替新 SSH 终端：子 shell 会继承旧 PATH/环境变量。
+
+离线回归测试可用当前 venv Python 启动，并明确选择被测试的 Bash：
+
+```bash
+.venv/bin/python scripts/setup/centos7/test_activation.py --bash /bin/bash
+```
+
+该测试不安装包或修改实际环境。测试 Bash 4.2 时需使用真正的 4.2 可执行文件；
+新版 Bash 的 `BASH_COMPAT=42` 不会重新引入旧版的实现 bug。
+
 新版将交互入口中的 `UV_PYTHON` 指向本 profile 的 venv Python。私有
 `python-base` 只作为解释器基底，日常安装包应进入 `.venv`。显式使用下面的
 `--python "$VIRTUAL_ENV/bin/python"` 在旧版和新版入口下都能选对目标环境。
