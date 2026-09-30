@@ -22,6 +22,8 @@ from .utils.deepspeed_utils import (
 )
 from .utils.fs import ensure_dir
 from .utils.logging_config import get_logger, setup_logging
+from .utils.lora import apply_expert_trainability, get_expert_lora_config
+from .utils.lora_checkpoint import get_lora_checkpoint_metadata
 from .utils.pytorch_utils import set_global_seed
 from .utils.samplers import ResumableEpochSampler
 from .utils.video_io import save_mp4
@@ -113,10 +115,37 @@ class Wan22Trainer:
         # Freeze non-trainable modules before optimizer/deepspeed initialization.
         # This keeps DiT (+ optional proprio encoder) as trainable when ZeRO builds optimizer state.
         self._apply_dit_only_train_mode(self.model)
-        trainable_params = list(self.model.dit.parameters())
+        trainable_named_params = [
+            ("dit." + name, parameter)
+            for name, parameter in self.model.dit.named_parameters()
+            if parameter.requires_grad
+        ]
         proprio_encoder = getattr(self.model, "proprio_encoder", None)
         if proprio_encoder is not None:
-            trainable_params.extend(list(proprio_encoder.parameters()))
+            trainable_named_params.extend(
+                ("proprio_encoder." + name, parameter)
+                for name, parameter in proprio_encoder.named_parameters()
+                if parameter.requires_grad
+            )
+        trainable_params = [parameter for _, parameter in trainable_named_params]
+        if not trainable_params:
+            raise ValueError("Training configuration selected no trainable parameters.")
+        # Capture before ZeRO replaces full parameter shapes with partitions.
+        self.training_lora_config = get_lora_checkpoint_metadata(self.model).get("lora")
+        self.trainable_parameter_spec = [
+            {"name": name, "shape": list(parameter.shape)}
+            for name, parameter in trainable_named_params
+        ]
+        self._validate_resume_parameter_config()
+        for branch in ("video", "action"):
+            expert = getattr(self.model, branch + "_expert", None)
+            if expert is not None:
+                logger.info(
+                    "%s DiT: lora=%s trainable=%d total=%d",
+                    branch, get_expert_lora_config(expert)["enabled"],
+                    sum(p.numel() for p in expert.parameters() if p.requires_grad),
+                    sum(p.numel() for p in expert.parameters()),
+                )
         self.optimizer = torch.optim.AdamW(
             trainable_params,
             lr=self.learning_rate,
@@ -314,8 +343,31 @@ class Wan22Trainer:
         if not resume_path.exists():
             raise FileNotFoundError(f"Resume checkpoint not found: {self.resume}")
         logger.info("Loading weight checkpoint before optimizer initialization: %s", self.resume)
-        self.model.load_checkpoint(str(resume_path), optimizer=None)
+        load_kwargs = {"optimizer": None}
+        if "lora_config_policy" in inspect.signature(self.model.load_checkpoint).parameters:
+            # Evaluation may reconstruct adapters from a checkpoint; a training
+            # warm start must respect the experiment's explicitly chosen config.
+            load_kwargs["lora_config_policy"] = "match"
+        self.model.load_checkpoint(str(resume_path), **load_kwargs)
         logger.warning("Loaded .pt weights only; optimizer/scheduler/step start fresh.")
+
+    def _validate_resume_parameter_config(self):
+        if not self.resume or not Path(str(self.resume)).is_dir():
+            return
+        state_file = Path(str(self.resume)) / "trainer_state.json"
+        if not state_file.exists():
+            if self.training_lora_config is not None:
+                raise ValueError("LoRA full-state resume requires trainer_state.json with matching LoRA metadata.")
+            return
+        with state_file.open(encoding="utf-8") as handle:
+            saved = json.load(handle)
+        if saved.get("lora") != self.training_lora_config:
+            raise ValueError(
+                "Full-state resume LoRA configuration mismatch. Restore the original expert "
+                "enabled/r/alpha/dropout/target settings, or use a compatible weights-only .pt warm start."
+            )
+        if "trainable_parameters" in saved and saved["trainable_parameters"] != self.trainable_parameter_spec:
+            raise ValueError("Full-state resume trainable parameter names, shapes, or optimizer order do not match.")
 
     def _set_dit_only_train_mode(self):
         # Match DiffSynth's freeze_except("dit"): only DiT stays trainable/in-train-mode.
@@ -329,6 +381,11 @@ class Wan22Trainer:
         model.requires_grad_(False)
         model.dit.train()
         model.dit.requires_grad_(True)
+        # The broad DiT unfreeze above must not re-enable PEFT base weights.
+        for branch in ("video", "action"):
+            expert = getattr(model, branch + "_expert", None)
+            if expert is not None:
+                apply_expert_trainability(expert)
         proprio_encoder = getattr(model, "proprio_encoder", None)
         if proprio_encoder is not None:
             proprio_encoder.train()
@@ -625,6 +682,8 @@ class Wan22Trainer:
             "global_step": int(self.global_step),
             "epoch": int(self.epoch),
             "batch_in_epoch": int(self.batch_in_epoch),
+            "lora": self.training_lora_config,
+            "trainable_parameters": self.trainable_parameter_spec,
         }
         with open(state_file, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=True, indent=2)
