@@ -13,6 +13,23 @@ action_dit_pretrained_path: checkpoints/SparseActionDiT_cond_0_4_8_12_16_20_24_2
 skip_dit_load_from_pretrain: false
 
 video_dit_config:
+  # Disabled means the original full-parameter training for this expert.
+  lora:
+    enabled: false
+    r: 16
+    lora_alpha: 16
+    lora_dropout: 0.0
+    target_modules:
+      - self_attn.q
+      - self_attn.k
+      - self_attn.v
+      - self_attn.o
+      - cross_attn.q
+      - cross_attn.k
+      - cross_attn.v
+      - cross_attn.o
+      - ffn.0
+      - ffn.2
   has_image_input: false
   patch_size: [1, 2, 2]
   in_dim: 48
@@ -36,6 +53,26 @@ video_dit_config:
   action_group_causal_mask_mode: "group_diagonal"
 
 action_dit_config:
+  # Enabled experts train only LoRA A/B; their base weights/biases stay frozen.
+  lora:
+    enabled: true
+    r: 16
+    lora_alpha: 16
+    lora_dropout: 0.0
+    target_modules:
+      - self_attn.q
+      - self_attn.k
+      - self_attn.v
+      - self_attn.o
+      - cross_attn.q
+      - cross_attn.k
+      - cross_attn.v
+      - cross_attn.o
+      - ffn.0
+      - ffn.2
+      # These layers have random base initialization, so also adapt them.
+      - action_encoder
+      - head
   action_dim: ${data.train.processor.action_output_dim}
   hidden_dim: 1024
   ffn_dim: 4096
