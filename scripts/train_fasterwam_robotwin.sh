@@ -10,7 +10,7 @@ WANDB_ENABLED="${WANDB_ENABLED:-false}"
 WANDB_PROJECT="${WANDB_PROJECT:-fasterwam}"
 WANDB_NAME="${WANDB_NAME:-robotwin_fasterwam_3cam_384_1e-4}"
 
-bash scripts/train_zero1.sh "${NPROC_PER_NODE}" \
+bash scripts/train_zero2.sh "${NPROC_PER_NODE}" \
   task=robotwin_fasterwam_3cam_384_1e-4 \
   "wandb.enabled=${WANDB_ENABLED}" \
   "wandb.project=${WANDB_PROJECT}" \
