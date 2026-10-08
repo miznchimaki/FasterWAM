@@ -91,4 +91,14 @@ PEFT 0.14.0 的 `all-linear` 简写不适用于这两个原生 `nn.Module`；本
 
 训练 checkpoint 中 adapter 不会被原地 merge/unload。需要精确继续同一 LoRA 训练时使用上述完整 checkpoint；转换为 dense 权重后开始的是新训练，不能恢复旧 adapter 的优化器状态。
 
+需要无 adapter 的评测权重时，使用[离线融合脚本](merge_lora_checkpoint.md)另存文件，原训练 checkpoint 保持不变：
+
+```bash
+python scripts/merge_lora_checkpoint.py \
+  --input /path/to/step_XXXXXX.pt \
+  --output /path/to/step_XXXXXX_merged.pt
+```
+
+加载融合后的文件做 dense 评测时关闭 video 和 action 的两个 LoRA 开关。
+
 官方实现依据：[PEFT 0.14 低层注入 API](https://huggingface.co/docs/peft/v0.14.0/en/developer_guides/low_level_api)、[注入源码](https://github.com/huggingface/peft/blob/v0.14.0/src/peft/mapping.py)、[LoRA Linear/初始化/dtype](https://github.com/huggingface/peft/blob/v0.14.0/src/peft/tuners/lora/layer.py)。

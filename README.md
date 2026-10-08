@@ -222,6 +222,9 @@ full-parameter training; custom LoRA targets cannot select them. For the origina
 `model.action_dit_config.lora.enabled=false`. See
 [PEFT LoRA training](docs/lora_training.md) for installation, per-expert
 overrides, freezing, and checkpoint compatibility.
+Training checkpoints keep base and adapter weights unmerged. To export a
+separate dense checkpoint for evaluation, use the
+[offline LoRA merge script](docs/merge_lora_checkpoint.md).
 
 ```bash
 NPROC_PER_NODE=8 bash scripts/train_fasterwam_libero.sh
