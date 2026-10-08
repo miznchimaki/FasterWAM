@@ -126,6 +126,31 @@ class LoRAConfigurationTests(unittest.TestCase):
                 configure_expert_lora(expert, {"enabled": True, "target_modules": targets})
             self.assertIs(expert[0], adapter)
 
+    def test_action_io_targets_are_rejected_after_suffix_resolution(self):
+        expert = nn.Module()
+        expert.blocks = nn.Sequential(nn.Linear(3, 3))
+        expert.action_encoder = nn.Sequential(nn.Linear(3, 3))
+        expert.head = nn.Sequential(nn.Linear(3, 3))
+        configure_expert_lora(expert, {"enabled": True, "target_modules": ["blocks.0"]})
+        adapter = expert.blocks[0]
+        original = deepcopy(expert.state_dict())
+        for target in ("action_encoder", "head", "0", "action_encoder.0", "head.0"):
+            with self.subTest(target=target), self.assertRaisesRegex(ValueError, "action_encoder/head"):
+                configure_expert_lora(expert, {"enabled": True, "target_modules": ["blocks.0", target]})
+            self.assertIs(expert.blocks[0], adapter)
+            for name, value in expert.state_dict().items():
+                torch.testing.assert_close(value, original[name], rtol=0, atol=0)
+
+        # A custom alias cannot bypass protection of the same physical layer.
+        aliased = nn.Module()
+        aliased.shared = nn.Linear(3, 3)
+        aliased.head = aliased.shared
+        with self.assertRaisesRegex(ValueError, "action_encoder/head"):
+            configure_expert_lora(aliased, {"enabled": True, "target_modules": ["shared"]}, branch="action")
+        # The restriction is action-specific; a video head remains selectable.
+        configure_expert_lora(aliased, {"enabled": True, "target_modules": ["shared"]}, branch="video")
+        self.assertTrue(hasattr(aliased.shared, "lora_A"))
+
     def test_reconfigure_remove_reset_and_same_config_are_safe_before_prepare(self):
         expert = nn.Sequential(nn.Linear(3, 4), nn.Linear(4, 3))
         base0, base1 = expert[0], expert[1]
@@ -210,8 +235,10 @@ class NativeSparseMoTLoRATests(unittest.TestCase):
                     self.assertIs(action.blocks, blocks)
                     self.assertIsInstance(video, WanVideoDiT)
                     self.assertIsInstance(action, SparseActionDiT)
-                    self.assertTrue(hasattr(action.action_encoder, "lora_A"))
-                    self.assertTrue(hasattr(action.head, "lora_A"))
+                    self.assertIsInstance(action.action_encoder, nn.Linear)
+                    self.assertIsInstance(action.head, nn.Linear)
+                    self.assertFalse(hasattr(action.action_encoder, "lora_A"))
+                    self.assertFalse(hasattr(action.head, "lora_A"))
                     self.assertTrue(hasattr(action.blocks[1].self_attn.q, "lora_A"))
                     self.assertFalse(hasattr(action.blocks[1], "cross_attn"))
                     self.assertTrue(hasattr(action.blocks[0].cross_attn.q, "lora_A"))
@@ -223,7 +250,8 @@ class NativeSparseMoTLoRATests(unittest.TestCase):
                     apply_expert_trainability(action)
                     for name, parameter in action.named_parameters():
                         is_adapter = ".lora_A.default." in name or ".lora_B.default." in name
-                        self.assertEqual(parameter.requires_grad, is_adapter, name)
+                        is_io = name.startswith(("action_encoder.", "head."))
+                        self.assertEqual(parameter.requires_grad, is_adapter or is_io, name)
                         self.assertEqual(parameter.dtype, dtype, name)
                     with torch.no_grad():
                         actual = forward_mot(mot, inputs)
@@ -235,7 +263,8 @@ class NativeSparseMoTLoRATests(unittest.TestCase):
                     optimizer = torch.optim.SGD((p for p in mot.parameters() if p.requires_grad), lr=0.02)
                     video_output, action_output = forward_mot(mot, inputs)
                     (video_output.float().square().mean() + action_output.float().square().mean()).backward()
-                    self.assertGreater(action.head.lora_B["default"].weight.grad.float().abs().sum().item(), 0)
+                    self.assertGreater(action.head.weight.grad.float().abs().sum().item(), 0)
+                    self.assertGreater(action.action_encoder.weight.grad.float().abs().sum().item(), 0)
                     for name, parameter in action.named_parameters():
                         if parameter.requires_grad:
                             self.assertIsNotNone(parameter.grad, name)
@@ -251,8 +280,10 @@ class NativeSparseMoTLoRATests(unittest.TestCase):
                     self.assertTrue(all(p.requires_grad for p in mot.video_kv_fusion_logits))
                     optimizer.step()
                     for parameter in action.parameters():
-                        if id(parameter) in original_action:
+                        if id(parameter) in original_action and not parameter.requires_grad:
                             torch.testing.assert_close(parameter, original_action[id(parameter)], rtol=0, atol=0)
+                    for module in (action.action_encoder, action.head):
+                        self.assertFalse(torch.equal(module.weight, original_action[id(module.weight)]))
                     mot.eval()
                     with torch.no_grad():
                         _, uncached = forward_mot(mot, inputs)

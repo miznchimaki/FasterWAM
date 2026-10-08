@@ -216,8 +216,9 @@ The caches are written to `data/text_embeds_cache_fasterwam/libero` and
 
 ### Launch training
 
-The FasterWAM model config now defaults to **action LoRA + full video DiT
-training**. For the original full-parameter baseline, pass
+The FasterWAM model config defaults to **action backbone LoRA + full video DiT
+training**. The action expert's `action_encoder` and `head` always use dense,
+full-parameter training; custom LoRA targets cannot select them. For the original full-parameter baseline, pass
 `model.action_dit_config.lora.enabled=false`. See
 [PEFT LoRA training](docs/lora_training.md) for installation, per-expert
 overrides, freezing, and checkpoint compatibility.

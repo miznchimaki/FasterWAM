@@ -167,7 +167,7 @@ def _lora_source_schema(model, configs):
         config = configs[branch]
         if not config["enabled"]:
             continue
-        targets = resolve_lora_target_modules(expert, config, branch=branch)
+        targets = resolve_lora_target_modules(expert, config, branch=branch, allow_legacy_action_io=True)
         for target in targets:
             layer = expert.get_submodule(target)
             base = layer.get_base_layer() if hasattr(layer, "get_base_layer") else layer
@@ -242,6 +242,13 @@ def load_fastwam_checkpoint(model, path, optimizer=None, *, lora_config_policy="
         raise ValueError("Checkpoint has LoRA tensors but no configuration metadata; cannot infer adapter scaling.")
     if configs is not None and component != "mot":
         raise ValueError("LoRA metadata requires a complete 'mot' checkpoint, not a legacy video-only 'dit'.")
+    if configs is not None and (lora_config_policy == "match" or optimizer is not None):
+        # Old checkpoints may legitimately contain action I/O adapters for
+        # evaluation, but the new training policy requires dense, trainable I/O.
+        from .lora import resolve_lora_target_modules
+
+        for branch, expert in _experts(model).items():
+            resolve_lora_target_modules(expert, configs[branch], branch=branch)
 
     # Validate the entire incoming payload against a virtual architecture
     # before replacing adapter modules or modifying base weights.
@@ -273,7 +280,10 @@ def load_fastwam_checkpoint(model, path, optimizer=None, *, lora_config_policy="
         if changes:
             logger.warning("Using checkpoint LoRA configuration instead of model configuration for %s", changes)
             for branch in changes:
-                configure_expert_lora(_experts(model)[branch], configs[branch], branch=branch)
+                configure_expert_lora(
+                    _experts(model)[branch], configs[branch], branch=branch,
+                    allow_legacy_action_io=lora_config_policy == "checkpoint",
+                )
         # Check the implementation's actual schema as well as the virtual one.
         _validate_state(state_dict, _shape_schema(model.mot.state_dict()), component="mot")
         model.mot.load_state_dict(state_dict, strict=True)

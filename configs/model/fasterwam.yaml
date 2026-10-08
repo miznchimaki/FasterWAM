@@ -53,7 +53,7 @@ video_dit_config:
   action_group_causal_mask_mode: "group_diagonal"
 
 action_dit_config:
-  # Enabled experts train only LoRA A/B; their base weights/biases stay frozen.
+  # Train backbone LoRA A/B plus full dense action_encoder/head parameters.
   lora:
     enabled: true
     r: 16
@@ -70,9 +70,6 @@ action_dit_config:
       - cross_attn.o
       - ffn.0
       - ffn.2
-      # These layers have random base initialization, so also adapt them.
-      - action_encoder
-      - head
   action_dim: ${data.train.processor.action_output_dim}
   hidden_dim: 1024
   ffn_dim: 4096

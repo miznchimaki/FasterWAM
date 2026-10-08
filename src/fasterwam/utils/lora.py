@@ -1,4 +1,4 @@
-"""In-place, adapter-only LoRA for FasterWAM's native DiT experts.
+"""In-place LoRA with fully trained action input/output layers.
 
 Adapters must be configured before optimizer/Accelerator preparation. Keeping the
 expert object itself preserves SparseMoT's direct access to its blocks and methods.
@@ -19,8 +19,9 @@ DEFAULT_LORA_TARGET_MODULES = (
     "cross_attn.q", "cross_attn.k", "cross_attn.v", "cross_attn.o",
     "ffn.0", "ffn.2",
 )
-DEFAULT_ACTION_LORA_TARGET_MODULES = DEFAULT_LORA_TARGET_MODULES + ("action_encoder", "head")
+DEFAULT_ACTION_LORA_TARGET_MODULES = DEFAULT_LORA_TARGET_MODULES
 _CONFIG_ATTRIBUTE = "_fasterwam_lora_config"
+_BRANCH_ATTRIBUTE = "_fasterwam_lora_branch"
 _CONFIG_KEYS = {"enabled", "r", "lora_alpha", "lora_dropout", "target_modules"}
 
 
@@ -88,7 +89,18 @@ def get_expert_lora_config(expert: nn.Module) -> dict:
 
 
 def _branch_of(expert: nn.Module, branch: str | None) -> str:
-    return branch if branch is not None else ("action" if hasattr(expert, "action_encoder") else "video")
+    if branch is not None:
+        return branch
+    return getattr(expert, _BRANCH_ATTRIBUTE, "action" if hasattr(expert, "action_encoder") else "video")
+
+
+def _action_io_modules(expert: nn.Module, branch: str | None = None) -> tuple[nn.Module, ...]:
+    if _branch_of(expert, branch) != "action":
+        return ()
+    return tuple(
+        module for name in ("action_encoder", "head")
+        if isinstance(module := getattr(expert, name, None), nn.Module)
+    )
 
 
 def _assert_before_zero_prepare(expert: nn.Module) -> None:
@@ -119,13 +131,20 @@ def _adapter_layers(expert: nn.Module) -> list[tuple[str, nn.Module]]:
     return layers
 
 
-def resolve_lora_target_modules(expert: nn.Module, config: Mapping, *, branch: str | None = None) -> list[str]:
-    """Resolve suffixes to canonical Linear paths, ignoring adapter internals."""
-    normalized = normalize_lora_config(config, branch=_branch_of(expert, branch))
+def resolve_lora_target_modules(
+    expert: nn.Module, config: Mapping, *, branch: str | None = None,
+    allow_legacy_action_io: bool = False,
+) -> list[str]:
+    """Resolve suffixes, rejecting action I/O targets except for legacy loading."""
+    branch = _branch_of(expert, branch)
+    normalized = normalize_lora_config(config, branch=branch)
     if not normalized["enabled"]:
         return []
     layers = dict(_adapter_layers(expert))
     matched = {suffix: [] for suffix in normalized["target_modules"]}
+    # Check actual matched modules, including descendants and aliases, rather
+    # than only the user-supplied suffix (e.g. "0" can match head.0).
+    action_io_ids = {id(module) for root in _action_io_modules(expert, branch) for module in root.modules()}
     resolved = []
     for name, module in expert.named_modules():
         if not name or any(name.startswith(path + ".") for path in layers):
@@ -134,6 +153,12 @@ def resolve_lora_target_modules(expert: nn.Module, config: Mapping, *, branch: s
         suffixes = [suffix for suffix in matched if name == suffix or name.endswith("." + suffix)]
         if not suffixes:
             continue
+        if id(module) in action_io_ids and not allow_legacy_action_io:
+            raise ValueError(
+                f"LoRA target {name!r} selects action_encoder/head, which must use dense full-parameter "
+                "training. Remove action I/O targets; legacy I/O adapters are supported only for "
+                "checkpoint evaluation or offline dense export."
+            )
         if not isinstance(base, nn.Linear):
             raise ValueError(f"LoRA target {name!r} is {type(base).__name__}, not nn.Linear.")
         resolved.append(name)
@@ -160,21 +185,29 @@ def remove_expert_lora(expert: nn.Module) -> nn.Module:
     return expert
 
 
-def configure_expert_lora(expert: nn.Module, config: Mapping | None, *, branch: str | None = None) -> nn.Module:
+def configure_expert_lora(
+    expert: nn.Module, config: Mapping | None, *, branch: str | None = None,
+    allow_legacy_action_io: bool = False,
+) -> nn.Module:
     """Inject or replace adapters in place before optimizer creation/prepare.
 
     Reapplying an identical config preserves learned adapters. A changed config
     discards the old delta and preserves the underlying base weights; checkpoint
     loaders can then restore the matching full state. Adapter dtype follows the
-    base Linear dtype, including BF16 DeepSpeed initialization.
+    base Linear dtype, including BF16 DeepSpeed initialization. The legacy I/O
+    exception is for checkpoint reconstruction only, never new training.
     """
-    normalized = normalize_lora_config(config, branch=_branch_of(expert, branch))
+    branch = _branch_of(expert, branch)
+    normalized = normalize_lora_config(config, branch=branch)
     _assert_before_zero_prepare(expert)
     # Validate targets and all existing adapters before changing the module tree.
     existing = _adapter_layers(expert)
-    targets = resolve_lora_target_modules(expert, normalized, branch=branch) if normalized["enabled"] else []
+    targets = resolve_lora_target_modules(
+        expert, normalized, branch=branch, allow_legacy_action_io=allow_legacy_action_io,
+    ) if normalized["enabled"] else []
     if existing and get_expert_lora_config(expert) == normalized:
-        apply_expert_trainability(expert)
+        apply_expert_trainability(expert, branch=branch, allow_legacy_action_io=allow_legacy_action_io)
+        setattr(expert, _BRANCH_ATTRIBUTE, branch)
         return expert
     if normalized["enabled"]:
         from peft import LoraConfig, inject_adapter_in_model
@@ -200,22 +233,43 @@ def configure_expert_lora(expert: nn.Module, config: Mapping | None, *, branch: 
         for _, layer in _adapter_layers(expert):
             layer.train(layer.get_base_layer().training)
     setattr(expert, _CONFIG_ATTRIBUTE, normalized)
-    apply_expert_trainability(expert)
+    setattr(expert, _BRANCH_ATTRIBUTE, branch)
+    apply_expert_trainability(expert, allow_legacy_action_io=allow_legacy_action_io)
     return expert
 
 
-def apply_expert_trainability(expert: nn.Module) -> None:
-    """Restore full training when disabled, or train only LoRA A/B when enabled."""
+def apply_expert_trainability(
+    expert: nn.Module, *, branch: str | None = None, allow_legacy_action_io: bool = False,
+) -> None:
+    """Train adapters plus dense action I/O, or all parameters when disabled.
+
+    Legacy I/O wrappers remain intact for evaluation. Reject their reuse by a
+    trainer rather than silently dropping their delta or changing the optimizer.
+    """
     if not get_expert_lora_config(expert)["enabled"]:
         expert.requires_grad_(True)
         return
     layers = _adapter_layers(expert)
     if not layers:
         raise ValueError("LoRA is enabled but the expert has no adapters.")
+    io_modules = _action_io_modules(expert, branch)
+    io_ids = {id(module) for root in io_modules for module in root.modules()}
+    legacy_io = [name for name, layer in layers if id(layer) in io_ids]
+    if legacy_io and not allow_legacy_action_io:
+        raise ValueError(
+            f"Legacy action I/O LoRA adapters {legacy_io} are evaluation-only. "
+            "Export a merged dense checkpoint before starting new training; "
+            "do not resume the old optimizer state."
+        )
     expert.requires_grad_(False)
     for _, layer in layers:
         layer.lora_A["default"].requires_grad_(True)
         layer.lora_B["default"].requires_grad_(True)
+    adapter_ids = {id(layer) for _, layer in layers}
+    for module in io_modules:
+        # Keep legacy wrappers' old base/adapter mask only for reconstruction.
+        if not any(id(child) in adapter_ids for child in module.modules()):
+            module.requires_grad_(True)
 
 
 def reset_expert_lora_parameters(expert: nn.Module) -> nn.Module:

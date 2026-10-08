@@ -366,6 +366,11 @@ class Wan22Trainer:
                 "Full-state resume LoRA configuration mismatch. Restore the original expert "
                 "enabled/r/alpha/dropout/target settings, or use a compatible weights-only .pt warm start."
             )
+        if self.training_lora_config is not None and "trainable_parameters" not in saved:
+            raise ValueError(
+                "LoRA full-state resume requires a trainable_parameters manifest to verify "
+                "optimizer compatibility; use a weights-only .pt warm start instead."
+            )
         if "trainable_parameters" in saved and saved["trainable_parameters"] != self.trainable_parameter_spec:
             raise ValueError("Full-state resume trainable parameter names, shapes, or optimizer order do not match.")
 
