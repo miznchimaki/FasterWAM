@@ -12,27 +12,32 @@ from torch import nn
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from fasterwam.models.wan22.fastwam import FastWAM  # noqa: E402
 from fasterwam.utils.deepspeed_utils import build_weights_checkpoint_payload  # noqa: E402
-from fasterwam.utils.lora import configure_expert_lora, get_expert_lora_config  # noqa: E402
+from fasterwam.utils.lora import apply_expert_trainability, configure_expert_lora, get_expert_lora_config  # noqa: E402
 from fasterwam.utils.lora_checkpoint import get_lora_checkpoint_metadata  # noqa: E402
 
 
 class TinyExpert(nn.Module):
-    def __init__(self):
+    def __init__(self, action=False):
         super().__init__()
         self.q = nn.Linear(4, 4)
         self.head = nn.Linear(4, 4)
+        if action:
+            self.action_encoder = nn.Linear(4, 4)
 
     def forward(self, value):
+        if hasattr(self, "action_encoder"):
+            value = self.action_encoder(value)
         return self.head(torch.tanh(self.q(value)))
 
 
 class TinyPolicy(FastWAM):
     """Use real FastWAM save/load without constructing the multi-billion DiTs."""
 
-    def __init__(self, *, action_rank=None, video_rank=None, targets=("q",), proprio=True):
+    def __init__(self, *, action_rank=None, video_rank=None, targets=("q",), proprio=True,
+                 allow_legacy_action_io=False):
         nn.Module.__init__(self)
         self.video_expert = TinyExpert()
-        self.action_expert = TinyExpert()
+        self.action_expert = TinyExpert(action=True)
         self.mot = nn.Module()
         self.mot.mixtures = nn.ModuleDict({"video": self.video_expert, "action": self.action_expert})
         self.mot.video_kv_fusion_logits = nn.ParameterList([nn.Parameter(torch.randn(2))])
@@ -47,6 +52,7 @@ class TinyPolicy(FastWAM):
                     {"enabled": True, "r": rank, "lora_alpha": 2 * rank,
                      "lora_dropout": 0.2, "target_modules": list(targets)},
                     branch=branch,
+                    allow_legacy_action_io=allow_legacy_action_io,
                 )
         self.eval()
 
@@ -110,7 +116,7 @@ class LoRACheckpointTests(unittest.TestCase):
         torch.testing.assert_close(source.proprio_encoder.weight, target.proprio_encoder.weight)
 
     def test_metadata_reconfigures_different_rank_targets_and_branch_enablement(self):
-        source = TinyPolicy(action_rank=3, targets=("head",))
+        source = TinyPolicy(action_rank=3, targets=("head",), allow_legacy_action_io=True)
         change_adapter_weights(source)
         source.save_checkpoint(self.path)
         target = TinyPolicy(action_rank=1, video_rank=1)
@@ -119,6 +125,25 @@ class LoRACheckpointTests(unittest.TestCase):
         self.assert_weights_equal(source, target)
         self.assertFalse(get_expert_lora_config(target.video_expert)["enabled"])
         self.assertEqual(get_expert_lora_config(target.action_expert)["r"], 3)
+
+    def test_legacy_action_io_adapters_preserve_predictions_but_cannot_start_training(self):
+        source = TinyPolicy(action_rank=2, targets=("q", "action_encoder", "head"),
+                            allow_legacy_action_io=True)
+        change_adapter_weights(source)
+        source.save_checkpoint(self.path)
+        target = TinyPolicy(action_rank=2)
+        target.load_checkpoint(self.path)
+        target.eval()
+        self.assert_weights_equal(source, target)
+        self.assertTrue(hasattr(target.action_expert.action_encoder, "lora_A"))
+        self.assertTrue(hasattr(target.action_expert.head, "lora_A"))
+        with self.assertRaisesRegex(ValueError, "evaluation-only"):
+            apply_expert_trainability(target.action_expert)
+        for training_target in (TinyPolicy(action_rank=2), target):
+            self.assert_rejected_without_mutation(
+                training_target, "action_encoder/head", lora_config_policy="match")
+        self.assert_rejected_without_mutation(
+            target, "action_encoder/head", optimizer=torch.optim.AdamW(target.parameters()))
 
     def test_dense_warmstart_remaps_base_and_resets_previous_adapter_delta(self):
         source = TinyPolicy()

@@ -26,23 +26,27 @@ from test_trainer_deepspeed import RecordingAccelerator
 
 
 class TinyExpert(nn.Module):
-    def __init__(self):
+    def __init__(self, action=False):
         super().__init__()
         self.q = nn.Linear(2, 2)
         self.head = nn.Linear(2, 2)
         self.offset = nn.Parameter(torch.full((2,), 0.2))
+        if action:
+            self.action_encoder = nn.Linear(2, 2)
         with torch.no_grad():
             for parameter in self.parameters():
                 parameter.fill_(0.2)
 
     def forward(self, x):
+        if hasattr(self, "action_encoder"):
+            x = self.action_encoder(x)
         return self.head(self.q(x)) + self.offset
 
 
 def adapter_config(enabled=True, **overrides):
     return {
         "enabled": enabled, "r": 1, "lora_alpha": 2,
-        "lora_dropout": 0.0, "target_modules": ["q", "head"], **overrides,
+        "lora_dropout": 0.0, "target_modules": ["q"], **overrides,
     }
 
 
@@ -50,7 +54,7 @@ class TinyLoraPolicy(nn.Module):
     def __init__(self, video, action):
         super().__init__()
         self.video_expert = TinyExpert()
-        self.action_expert = TinyExpert()
+        self.action_expert = TinyExpert(action=True)
         configure_expert_lora(self.video_expert, video, branch="video")
         configure_expert_lora(self.action_expert, action, branch="action")
         self.mot = nn.Module()
@@ -143,14 +147,17 @@ class LoraTrainingTests(unittest.TestCase):
                             changed_adapters = []
                             for local_name, parameter in expert.named_parameters():
                                 is_adapter = ".lora_A." in local_name or ".lora_B." in local_name
-                                self.assertEqual(parameter.requires_grad, is_adapter if enabled else True, local_name)
+                                is_action_io = expert is model.action_expert and local_name.startswith(("head.", "action_encoder."))
+                                self.assertEqual(parameter.requires_grad, is_adapter or is_action_io if enabled else True, local_name)
                                 changed = not torch.equal(before[names[id(parameter)]], parameter)
                                 if enabled and is_adapter:
                                     changed_adapters.append(changed)
-                                elif not enabled:
+                                elif not enabled or is_action_io:
                                     self.assertTrue(changed, local_name)
                             if enabled:
                                 self.assertTrue(any(changed_adapters), "LoRA received no optimizer update")
+                        self.assertIsInstance(model.action_expert.action_encoder, nn.Linear)
+                        self.assertIsInstance(model.action_expert.head, nn.Linear)
                         for module in (model.mot.fusion, model.proprio_encoder):
                             for parameter in module.parameters():
                                 self.assertTrue(parameter.requires_grad)
@@ -169,7 +176,7 @@ class LoraTrainingTests(unittest.TestCase):
                     state_path = Path(trainer.save_checkpoint()["state_path"])
                     metadata = json.loads((state_path / "trainer_state.json").read_text())
                     self.assertEqual(metadata["lora"]["video"], {"enabled": False})
-                    self.assertEqual(metadata["lora"]["action"], adapter_config(target_modules=["head", "q"]))
+                    self.assertEqual(metadata["lora"]["action"], adapter_config())
                     expected_spec = [
                         ("dit.mixtures.video.offset", [2]),
                         ("dit.mixtures.video.q.weight", [2, 2]),
@@ -178,8 +185,10 @@ class LoraTrainingTests(unittest.TestCase):
                         ("dit.mixtures.video.head.bias", [2]),
                         ("dit.mixtures.action.q.lora_A.default.weight", [1, 2]),
                         ("dit.mixtures.action.q.lora_B.default.weight", [2, 1]),
-                        ("dit.mixtures.action.head.lora_A.default.weight", [1, 2]),
-                        ("dit.mixtures.action.head.lora_B.default.weight", [2, 1]),
+                        ("dit.mixtures.action.head.weight", [2, 2]),
+                        ("dit.mixtures.action.head.bias", [2]),
+                        ("dit.mixtures.action.action_encoder.weight", [2, 2]),
+                        ("dit.mixtures.action.action_encoder.bias", [2]),
                         ("dit.fusion.weight", [2, 2]), ("dit.fusion.bias", [2]),
                         ("proprio_encoder.weight", [2, 2]), ("proprio_encoder.bias", [2]),
                     ]
@@ -216,13 +225,20 @@ class LoraTrainingTests(unittest.TestCase):
             state_path = Path(trainer.save_checkpoint()["state_path"])
             state_file = state_path / "trainer_state.json"
             saved = json.loads(state_file.read_text())
-            for mismatch in ("shape", "order"):
+            for mismatch in ("shape", "order", "missing", "old_frozen_io"):
                 with self.subTest(mismatch=mismatch):
                     changed = deepcopy(saved)
                     if mismatch == "shape":
                         changed["trainable_parameters"][0]["shape"] = [999]
-                    else:
+                    elif mismatch == "order":
                         changed["trainable_parameters"].reverse()
+                    elif mismatch == "missing":
+                        changed.pop("trainable_parameters")
+                    else:
+                        changed["trainable_parameters"] = [
+                            item for item in changed["trainable_parameters"]
+                            if not item["name"].startswith(("dit.mixtures.action.head.", "dit.mixtures.action.action_encoder."))
+                        ]
                     state_file.write_text(json.dumps(changed))
                     events.clear()
                     with self.assertRaisesRegex(ValueError, "parameter"):
@@ -250,7 +266,7 @@ class LoraTrainingTests(unittest.TestCase):
         import fasterwam.models.wan22.fasterwam as factory_module
 
         events = []
-        experts = {branch: TinyExpert() for branch in ("video", "action")}
+        experts = {branch: TinyExpert(action=branch == "action") for branch in ("video", "action")}
         for expert in experts.values():
             expert.blocks = nn.ModuleList([nn.Identity()])
             expert.num_heads = expert.attn_head_dim = 2
