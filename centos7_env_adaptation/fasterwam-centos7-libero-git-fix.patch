@@ -1,0 +1,115 @@
+diff --git a/scripts/setup/_common.sh b/scripts/setup/_common.sh
+index fd004d5..1cf274a 100755
+--- a/scripts/setup/_common.sh
++++ b/scripts/setup/_common.sh
+@@ -39,14 +39,15 @@ fasterwam_clone_pinned() {
+   local revision="$2"
+   local target="$3"
+   if [ -d "${target}" ]; then
+-    if ! git -C "${target}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
++    # CentOS 7's system Git may not support -C. A subshell also preserves cwd.
++    if ! (cd -- "${target}" && git rev-parse --is-inside-work-tree) >/dev/null 2>&1; then
+       echo "Cannot verify source revision because this is not a Git checkout: ${target}" >&2
+       exit 1
+     fi
+     local actual_revision
+     local expected_revision
+-    actual_revision="$(git -C "${target}" rev-parse HEAD)"
+-    expected_revision="$(git -C "${target}" rev-parse "${revision}^{commit}")"
++    actual_revision="$(cd -- "${target}" && git rev-parse HEAD)"
++    expected_revision="$(cd -- "${target}" && git rev-parse "${revision}^{commit}")"
+     if [ "${actual_revision}" != "${expected_revision}" ]; then
+       echo "Source revision mismatch for ${target}" >&2
+       echo "  expected: ${revision} (${expected_revision})" >&2
+@@ -57,5 +58,5 @@ fasterwam_clone_pinned() {
+   fi
+   mkdir -p "$(dirname "${target}")"
+   git clone "${repo_url}" "${target}"
+-  git -C "${target}" checkout "${revision}"
++  (cd -- "${target}" && git checkout "${revision}")
+ }
+diff --git a/scripts/setup/centos7/README.zh-CN.md b/scripts/setup/centos7/README.zh-CN.md
+index e5b01df..547e4a8 100644
+--- a/scripts/setup/centos7/README.zh-CN.md
++++ b/scripts/setup/centos7/README.zh-CN.md
+@@ -304,6 +304,28 @@ source .runtime/centos7/libero/activate.sh
+ python scripts/setup/centos7/doctor.py --profile libero --require-cuda --render
+ ```
+ 
++若旧版脚本在 clone LIBERO 成功后报 `Unknown option: -C`，说明系统 Git 不
++支持 `git -C`，安装在切换固定源码版本时中断，尚未完成 LIBERO 安装和配置。
++本版 `_common.sh` 改用子 shell 中的 `cd`，所有调用均兼容旧 Git。
++
++已发生此错误时，应用修复后执行：
++
++```bash
++bash scripts/setup/resume_centos7_libero.sh
++```
++
++该恢复入口要求已建立的 LIBERO runtime 和完整 clone 存在，确认源码 origin、
++仓库根目录及工作树干净后，切换到 `8f1084e`，再调用正常安装入口完成后续工作。
++有本地修改或未跟踪文件时会停止，不会强制覆盖或清理。已下载的 clone 会复用。
++只替换 `git -C` 后直接重跑可能遇到 revision mismatch，因为已有目录在默认
++HEAD，而安装器对已有 checkout 会保留版本不匹配即停止的保护。
++重跑只同步 `.venvs/libero` 的锁定依赖；如果你后来额外装过未记录的包，它们
++可能被 uv sync 移除。core 训练环境 `.venv` 不属于这次安装的目标。
++
++安装以 `Ready: source .../.runtime/centos7/libero/activate.sh` 成功结束后，
++再在评测 GPU 节点执行上面的 `--require-cuda --render` 检查。默认安装检查
++不渲染；`--render` 验证 MuJoCo 离屏渲染，实际 LIBERO 任务还需短评测验证。
++
+ 之后原 `scripts/eval_fasterwam_libero.sh` 及其 CKPT_PATH、DATASET_STATS_PATH、
+ NUM_GPUS 参数不变。LIBERO-Plus 对应把 profile 改成 `libero-plus`。
+ 固定 clone revision、editable install、配置生成及缺失仿真资产的下载流程
+diff --git a/scripts/setup/resume_centos7_libero.sh b/scripts/setup/resume_centos7_libero.sh
+new file mode 100644
+--- /dev/null
++++ b/scripts/setup/resume_centos7_libero.sh
+@@ -0,0 +1,47 @@
++#!/usr/bin/env bash
++# Recover the specific clone-success / old-Git checkout-failure installation.
++set -euo pipefail
++unset LD_LIBRARY_PATH LD_PRELOAD PYTHONHOME PYTHONPATH
++
++if [[ $# -ne 0 ]]; then
++  echo "Usage: bash scripts/setup/resume_centos7_libero.sh" >&2
++  exit 2
++fi
++SETUP_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
++ROOT="$(cd -- "${SETUP_DIR}/../.." && pwd)"
++SOURCE_DIR="${ROOT}/third_party/LIBERO"
++
++if [[ ! -f "${ROOT}/.runtime/centos7/libero/state.json" || ! -x "${ROOT}/.venvs/libero/bin/python" ]]; then
++  echo "Prepared LIBERO runtime missing. Run install_centos7.sh libero first." >&2
++  exit 1
++fi
++if [[ ! -d "${SOURCE_DIR}/.git" ]]; then
++  echo "Expected the completed LIBERO clone at ${SOURCE_DIR}; refusing recovery." >&2
++  exit 1
++fi
++
++(
++  cd -- "${SOURCE_DIR}"
++  [[ "$(git rev-parse --show-toplevel)" == "$(pwd -P)" ]] || {
++    echo "Unexpected Git checkout root; refusing recovery." >&2; exit 1;
++  }
++  ORIGIN="$(git config --get remote.origin.url)"
++  case "${ORIGIN}" in
++    https://github.com/Lifelong-Robot-Learning/LIBERO.git|https://github.com/Lifelong-Robot-Learning/LIBERO|git@github.com:Lifelong-Robot-Learning/LIBERO.git) ;;
++    *) echo "Unexpected LIBERO origin: ${ORIGIN}; refusing recovery." >&2; exit 1 ;;
++  esac
++  CHANGES="$(git status --porcelain)"
++  if [[ -n "${CHANGES}" ]]; then
++    echo "LIBERO has local changes or untracked files; preserve them before switching revision:" >&2
++    printf '%s\n' "${CHANGES}" >&2
++    exit 1
++  fi
++  # No -C, forced checkout, reset or clean. A commit hash gives detached HEAD
++  # on the old Git shipped with CentOS 7 as well as current Git.
++  EXPECTED="$(git rev-parse --verify '8f1084e^{commit}')"
++  git checkout "${EXPECTED}"
++  [[ "$(git rev-parse HEAD)" == "${EXPECTED}" ]]
++)
++
++echo "LIBERO source is at the pinned revision; resuming the normal installer."
++exec bash "${SETUP_DIR}/install_centos7.sh" libero

@@ -29,9 +29,9 @@ evaluate_results/
 *.pgm
 *.tiff
 *.tif
-*.tar
-*.tar.gz
-*.gz
+# *.tar
+# *.tar.gz
+# *.gz
 *.pkl
 *.pt
 *.bin
@@ -49,7 +49,7 @@ evaluate_results/
 *.DS_Store
 *.pyc
 *Thumbs.db
-*.patch
+# *.patch
 
 # Credential information that should never be checked in
 credentials

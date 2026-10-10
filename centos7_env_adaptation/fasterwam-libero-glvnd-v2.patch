@@ -1,0 +1,795 @@
+diff --git a/scripts/setup/centos7/libero_graphics.py b/scripts/setup/centos7/libero_graphics.py
+--- a/scripts/setup/centos7/libero_graphics.py
++++ b/scripts/setup/centos7/libero_graphics.py
+@@ -112,7 +112,7 @@
+         r"libnss_[A-Za-z0-9_]+\.so(?:\.\d+)*)", name))
+ 
+ 
+-def plan_graphics(state, extra_dirs=()):
++def plan_graphics(state, extra_dirs=(), glvnd_dir=None):
+     """Return ``{load_name: real_source}`` for a host NVIDIA EGL dependency closure.
+ 
+     ``GraphicsError`` contains any partial inventory and missing libraries. This
+@@ -135,7 +135,9 @@
+         "/usr/lib/x86_64-linux-gnu/nvidia/current", "/usr/lib/nvidia-current",
+         "/usr/local/nvidia/lib64", "/usr/local/nvidia/lib",
+     )]
+-    dirs = conventional + [Path(p).expanduser() for p in extra_dirs]
++    # An explicitly supplied private build must win over the host ldconfig
++    # cache. CentOS 7 can expose legacy Mesa under the same libEGL.so.1 SONAME.
++    dirs = [Path(p).expanduser() for p in extra_dirs] + conventional
+     dirs += [Path(p) for p in state["rpath"]]
+     dirs = list(dict.fromkeys(p.resolve() for p in dirs
+                              if p.is_dir() and p.resolve() != native and "stubs" not in p.parts))
+@@ -145,11 +147,80 @@
+     vendor_dir = None
+     vendor_version = None
+ 
++    def inspect(source, option):
++        try:
++            proc = _run([state["patchelf"], option, source])
++        except (OSError, subprocess.TimeoutExpired) as exc:
++            raise GraphicsError("Cannot inspect graphics ELF: " + str(exc), found=found) from exc
++        if proc.returncode:
++            raise GraphicsError("patchelf {} failed for {}: {}".format(
++                option, source, proc.stderr.strip()), found=found)
++        return proc.stdout.strip()
++
++    def same_name_files(directory, name):
++        # Inspect real versioned files too: an old ldconfig symlink can point
++        # at Mesa while an unlinked GLVND libEGL.so.1.1.0 is already installed.
++        try:
++            values = [directory / name] + sorted(directory.glob(name + ".*"))
++        except OSError:
++            values = [directory / name]
++        return values
++
++    def glvnd_trio(directory):
++        chosen = {}
++        for name in ("libEGL.so.1", "libOpenGL.so.0", "libGLdispatch.so.0"):
++            for candidate in same_name_files(directory, name):
++                real = _readable_elf(candidate)
++                if real is None or inspect(real, "--print-soname") != name:
++                    continue
++                if name in ("libEGL.so.1", "libOpenGL.so.0"):
++                    if "libGLdispatch.so.0" not in inspect(real, "--print-needed").splitlines():
++                        rejected.append("Rejected non-GLVND {}: no libGLdispatch.so.0 dependency".format(real))
++                        continue
++                if name == "libEGL.so.1":
++                    # This string is used by libglvnd's actual vendor loader,
++                    # survives stripping, and is absent from legacy Mesa EGL.
++                    try:
++                        marker = b"__EGL_VENDOR_LIBRARY_FILENAMES" in real.read_bytes()
++                    except OSError:
++                        marker = False
++                    if not marker:
++                        rejected.append("Rejected non-GLVND {}: no EGL vendor-loader marker".format(real))
++                        continue
++                chosen[name] = real
++                break
++            if name not in chosen:
++                return None
++        if len({path.parent for path in chosen.values()}) != 1:
++            rejected.append("Rejected incoherent GLVND trio in {}: real files are in different directories".format(directory))
++            return None
++        return chosen
++
++    if glvnd_dir is not None:
++        glvnd_dirs = [Path(glvnd_dir).expanduser().resolve()]
++        if not glvnd_dirs[0].is_dir() or glvnd_dirs[0] == native:
++            raise GraphicsError("--glvnd-dir must be an existing source directory, not native-libs.")
++    else:
++        # User directories precede cache locations, followed by conventional
++        # directories and the runtime's configured search directories.
++        glvnd_dirs = [Path(p).expanduser().resolve() for p in extra_dirs]
++        glvnd_dirs += [p.parent.resolve() for p in cache.get("libEGL.so.1", [])]
++        glvnd_dirs += dirs
++        glvnd_dirs = list(dict.fromkeys(p for p in glvnd_dirs
++                                      if p.is_dir() and p != native and "stubs" not in p.parts))
++    trio = None
++    for directory in glvnd_dirs:
++        trio = glvnd_trio(directory)
++        if trio is not None:
++            details.append("GLVND dispatch directory: " + str(directory))
++            break
++
+     def locate(name):
+         nonlocal vendor_dir, vendor_version
+         _basename(name)
+         is_nvidia = name.startswith(("libnvidia-", "libEGL_nvidia", "libGLX_nvidia"))
+         candidates = ([vendor_dir / name] if is_nvidia and vendor_dir else [])
++        candidates += [Path(p).expanduser() / name for p in extra_dirs]
+         candidates += cache.get(name, [])
+         candidates += [p / name for p in dirs]
+         for candidate in dict.fromkeys(candidates):
+@@ -168,20 +239,39 @@
+         return None
+ 
+     # Choose the NVIDIA vendor first so its own directory is preferred for its
+-    # companion libraries. GLVND dispatch libraries themselves are vendor neutral.
+-    for name in ("libEGL_nvidia.so.0", "libEGL.so.1", "libGLdispatch.so.0"):
++    # companion libraries. The three dispatch roots are a coherent GLVND set;
++    # a dlopen-able legacy Mesa library is not sufficient for NVIDIA EGL.
++    for name in ("libEGL_nvidia.so.0",):
+         path = locate(name)
+         if path is None:
+             missing.append(name)
+         else:
+             found[name] = path
+-    for name in ("libOpenGL.so.0", "libGL.so.1"):
+-        path = locate(name)
+-        if path is not None:
+-            found[name] = path
+-            break
++    if trio is not None:
++        found.update(trio)
+     else:
+-        missing.append("libOpenGL.so.0 OR libGL.so.1")
++        where = " in " + str(glvnd_dirs[0]) if glvnd_dir is not None else " in searched directories"
++        missing.append("coherent GLVND libEGL.so.1 + libOpenGL.so.0 + libGLdispatch.so.0" + where)
++
++    # NVIDIA loads eglcore dynamically, so DT_NEEDED traversal alone misses it.
++    # Retain the exact driver's filename; do not substitute a different version.
++    selected_version = vendor_version or driver
++    if "libEGL_nvidia.so.0" in found:
++        if selected_version is None:
++            missing.append("NVIDIA vendor version for matching libnvidia-eglcore.so.VERSION")
++        else:
++            name = "libnvidia-eglcore.so." + selected_version
++            path = locate(name)
++            if path is None:
++                missing.append(name + " (NVIDIA EGL runtime companion)")
++            else:
++                found[name] = path
++            # Some driver versions dlopen this shader compiler at render time.
++            # It is optional here because not every EGL driver uses it.
++            name = "libnvidia-glvkspirv.so." + selected_version
++            path = locate(name)
++            if path is not None:
++                found[name] = path
+     if missing:
+         raise GraphicsError("Required host EGL libraries were not found; no files were changed.",
+                             found=found, missing=missing, details=details + rejected)
+diff --git a/scripts/setup/centos7/repair_libero_loader.py b/scripts/setup/centos7/repair_libero_loader.py
+--- a/scripts/setup/centos7/repair_libero_loader.py
++++ b/scripts/setup/centos7/repair_libero_loader.py
+@@ -2,8 +2,9 @@
+ """Repair owned MuJoCo ELF search paths and stage existing host EGL libraries.
+ 
+ Run with the private LIBERO Python from repo root. Without --apply, only print
+-the plan. No downloads, system-library changes, global LD_LIBRARY_PATH, or GPU
+-rendering. Rendering is verified separately by doctor.py --render.
++the plan. --build-glvnd explicitly permits downloading/building a private GLVND
++dispatcher. No system-library changes, global LD_LIBRARY_PATH, or GPU rendering.
++Rendering is verified separately by doctor.py --render.
+ """
+ from __future__ import annotations
+ 
+@@ -127,15 +128,95 @@
+     return patched_hash
+ 
+ 
+-def probe(label: str, code: str, backend: str, *args: str) -> None:
++def probe(label: str, code: str, backend: str, *args: str, vendor_json=None) -> None:
+     env = os.environ.copy()
+     for key in ('LD_LIBRARY_PATH', 'LD_PRELOAD', 'LD_DEBUG', 'LD_DEBUG_OUTPUT', 'PYTHONHOME', 'PYTHONPATH'):
+         env.pop(key, None)
+     env.update(MUJOCO_GL=backend, PYOPENGL_PLATFORM='egl', PYTHONNOUSERSITE='1')
++    if vendor_json is not None:
++        env['__EGL_VENDOR_LIBRARY_FILENAMES'] = str(vendor_json)
+     print(f'CHECK {label}', flush=True)
+     subprocess.run([sys.executable, '-I', '-B', '-u', '-c', code, *args],
+                    env=env, check=True, timeout=60)
+     print(f'PASS {label}', flush=True)
++
++
++def owned_hash(path: Path, known: dict) -> str:
++    if path.is_symlink() or path.parent.resolve() != path.parent:
++        raise RuntimeError(f'Refusing graphics symlink: {path}')
++    actual = digest(path)
++    allowed = {known.get('patched_sha256')}
++    if known.get('pending'):
++        allowed.add(known.get('previous_sha256'))
++    if not known or actual not in allowed:
++        raise RuntimeError(f'Unmanaged or externally changed graphics file: {path}')
++    return actual
++
++
++def retire_obsolete(native, backups, record, plan, manifest_path):
++    """Move only hash-verified, formerly managed copies out of the search path.
++
++    Save the retirement intent first. A crash on either side of os.replace is
++    resumable; unrelated native-libs files (including C++ runtimes) stay intact.
++    """
++    for name in sorted(set(record['graphics']) - set(plan)):
++        if Path(name).name != name or name in ('.', '..'):
++            raise RuntimeError(f'Invalid managed graphics name: {name!r}')
++        path = native / name
++        known = record['graphics'][name]
++        if path.exists() or path.is_symlink():
++            sha = owned_hash(path, known)
++            target = backups / ('retired-' + name + '-' + sha + '.elf')
++            if target.is_symlink() or (target.exists() and digest(target) != sha):
++                raise RuntimeError(f'Unexpected retired-library backup: {target}')
++            record.setdefault('retired_graphics', {})[name] = dict(known, backup=str(target), sha256=sha)
++            atomic_json(manifest_path, record)
++            os.replace(path, target)
++            print(f'RETIRED {path} -> {target}', flush=True)
++        del record['graphics'][name]
++        atomic_json(manifest_path, record)
++
++
++EGL_PROBE = r'''
++import ctypes as C, pathlib, sys
++native = pathlib.Path(sys.argv[1]).resolve()
++egl = C.CDLL('libEGL.so.1')
++egl.eglQueryString.argtypes = [C.c_void_p, C.c_int]
++egl.eglQueryString.restype = C.c_char_p
++version = egl.eglQueryString(None, 0x3054)
++print('EGL dispatcher version:', version)
++if not version or b'libglvnd' not in version.lower():
++    raise RuntimeError('The loaded libEGL is not GLVND; refusing a legacy Mesa dispatcher.')
++print('EGL client extensions:', egl.eglQueryString(None, 0x3055))
++egl.eglGetProcAddress.argtypes = [C.c_char_p]
++egl.eglGetProcAddress.restype = C.c_void_p
++address = egl.eglGetProcAddress(b'eglQueryDevicesEXT')
++if not address:
++    raise RuntimeError('GLVND did not expose eglQueryDevicesEXT.')
++query = C.CFUNCTYPE(C.c_uint, C.c_int, C.POINTER(C.c_void_p), C.POINTER(C.c_int))(address)
++count = C.c_int()
++if not query(0, None, C.byref(count)):
++    raise RuntimeError('eglQueryDevicesEXT exists, but device enumeration failed.')
++print('EGL device count:', count.value)
++mapped = set()
++for line in pathlib.Path('/proc/self/maps').read_text().splitlines():
++    parts = line.split(None, 5)
++    if len(parts) == 6 and parts[5].startswith('/'):
++        path = pathlib.Path(parts[5])
++        if path.name.startswith(('libEGL', 'libOpenGL', 'libGLdispatch', 'libnvidia-eglcore', 'libnvidia-glsi')):
++            mapped.add(path)
++for path in sorted(mapped):
++    print('EGL mapped:', path)
++    if path.parent != native:
++        raise RuntimeError('Graphics library escaped the private native-libs directory: ' + str(path))
++# A driver may defer eglcore until context creation. Its independent dlopen
++# probe and the final real-render check cover that without preloading it here.
++for prefix in ('libEGL.so.', 'libEGL_nvidia.so.'):
++    if not any(path.name.startswith(prefix) for path in mapped):
++        raise RuntimeError('NVIDIA vendor runtime was not mapped: ' + prefix)
++if count.value == 0:
++    raise RuntimeError('GLVND works but NVIDIA reports zero EGL devices. Check GPU allocation, device permissions, and driver visibility on this compute node.')
++'''
+ 
+ 
+ def main() -> int:
+@@ -143,7 +224,15 @@
+     parser.add_argument('--apply', action='store_true', help='Apply changes to the owned LIBERO environment')
+     parser.add_argument('--root', type=Path, default=Path.cwd())
+     parser.add_argument('--graphics-dir', action='append', default=[], help='Additional existing host graphics-library source directory; repeatable')
++    parser.add_argument('--glvnd-dir', type=Path, help='Existing coherent GLVND source lib directory; never fall back to host Mesa')
++    parser.add_argument('--build-glvnd', action='store_true', help='Download and build pinned GLVND privately (requires --apply)')
++    parser.add_argument('--glvnd-source', type=Path, help='Verified local v1.7.0 source archive, for --build-glvnd without a GitHub download')
++    parser.add_argument('--meson-wheel', type=Path, help='Verified local Meson 1.5.2 wheel for an offline private build')
+     args = parser.parse_args()
++    if args.build_glvnd and (not args.apply or args.glvnd_dir):
++        parser.error('--build-glvnd requires --apply and cannot be combined with --glvnd-dir')
++    if (args.glvnd_source or args.meson_wheel) and not args.build_glvnd:
++        parser.error('--glvnd-source/--meson-wheel requires --build-glvnd')
+     root = args.root.resolve()
+     state_dir = root / '.runtime/centos7/libero'
+     state = json.loads((state_dir / 'state.json').read_text())
+@@ -165,6 +254,7 @@
+     if previous and previous.get('root') != str(root):
+         raise RuntimeError('Repair manifest belongs to another repository.')
+     extra_dirs = args.graphics_dir or previous.get('graphics_dirs', [])
++    glvnd_dir = args.glvnd_dir or previous.get('glvnd_dir')
+     probe('private librt is loadable',
+           'import ctypes,sys; ctypes.CDLL(sys.argv[1]); print(sys.argv[1])',
+           'disable', str(Path(state['loader']).parent / 'librt.so.1'))
+@@ -190,6 +280,7 @@
+     record.setdefault('graphics', {})
+     record.setdefault('originals', {})
+     if args.apply:
++        record['imports_passed'] = False
+         native.mkdir(exist_ok=True)
+         backups.mkdir(exist_ok=True)
+         for obj in objects:
+@@ -205,31 +296,37 @@
+         # Fresh process, no import torch and no preloaded librt workaround.
+         probe('fresh MuJoCo import without graphics',
+               'import mujoco; print("mujoco", mujoco.__version__)', 'disable')
++    if args.build_glvnd:
++        build_spec = importlib.util.spec_from_file_location('fasterwam_build_glvnd', helper.with_name('build_libero_glvnd.py'))
++        builder = importlib.util.module_from_spec(build_spec)
++        build_spec.loader.exec_module(builder)
++        glvnd_dir = builder.build_glvnd(state, source_archive=args.glvnd_source, meson_wheel=args.meson_wheel)
+     try:
+-        plan = module.plan_graphics(state, extra_dirs)
++        plan = module.plan_graphics(state, extra_dirs, glvnd_dir=glvnd_dir)
+     except module.GraphicsError as error:
+         print(f'GRAPHICS NOT READY: {error}', file=sys.stderr)
+         for detail in getattr(error, 'details', []):
+             print(detail, file=sys.stderr)
+-        print('No system libraries or permissions were changed. Provide this complete output; '
+-              'an existing matching driver library directory can be supplied with --graphics-dir.', file=sys.stderr)
++        print('No system libraries or permissions were changed. For missing GLVND, use --apply --build-glvnd '
++              'or --glvnd-dir /path/to/coherent/glvnd/lib. For missing NVIDIA companions, '
++              'supply an existing matching driver directory with --graphics-dir.', file=sys.stderr)
+         return 2
+     for name, source in plan.items():
+         print(f'GRAPHICS {name} <- {source}', flush=True)
+     if not args.apply:
+         print('Plan only. Re-run with --apply to repair this LIBERO environment.')
+         return 0
+-    for name in plan:
++    if glvnd_dir is not None:
++        record['glvnd_dir'] = str(Path(glvnd_dir).resolve())
++    # Validate *all* existing graphics copies before publishing any new ones.
++    for name in set(plan) | set(record['graphics']):
++        if Path(name).name != name or name in ('.', '..'):
++            raise RuntimeError(f'Invalid graphics name: {name!r}')
+         destination = native / name
+         if destination.is_symlink():
+             raise RuntimeError(f'Refusing to overwrite a symlink: {destination}')
+         if destination.exists():
+-            known = record['graphics'].get(name, {})
+-            allowed = {known.get('patched_sha256')}
+-            if known.get('pending'):
+-                allowed.add(known.get('previous_sha256'))
+-            if not known or digest(destination) not in allowed:
+-                raise RuntimeError(f'Unmanaged or externally changed graphics file: {destination}')
++            owned_hash(destination, record['graphics'].get(name, {}))
+     for name, source in plan.items():
+         destination = native / name
+         old = record['graphics'].get(name, {})
+@@ -251,13 +348,29 @@
+         record['graphics'][name].pop('pending', None)
+         record['graphics'][name].pop('previous_sha256', None)
+         atomic_json(manifest_path, record)
+-    for name in ('libEGL.so.1', 'libEGL_nvidia.so.0', 'libOpenGL.so.0' if 'libOpenGL.so.0' in plan else 'libGL.so.1'):
++    retire_obsolete(native, backups, record, plan, manifest_path)
++    vendor_dir = state_dir / 'egl-vendor'
++    vendor_json = vendor_dir / '10_fasterwam_nvidia.json'
++    if vendor_dir.is_symlink() or vendor_json.is_symlink():
++        raise RuntimeError('Refusing a symlink at the owned EGL vendor configuration.')
++    vendor_value = {'file_format_version': '1.0.0', 'ICD': {'library_path': str(native / 'libEGL_nvidia.so.0')}}
++    if vendor_json.exists() and json.loads(vendor_json.read_text()) != vendor_value:
++        raise RuntimeError(f'Unexpected existing EGL vendor configuration: {vendor_json}')
++    vendor_dir.mkdir(exist_ok=True)
++    atomic_json(vendor_json, vendor_value)
++    libraries = ['libEGL.so.1', 'libEGL_nvidia.so.0', 'libOpenGL.so.0']
++    libraries += sorted(name for name in plan if name.startswith('libnvidia-eglcore.so.'))
++    for name in libraries:
+         probe('fresh dlopen ' + name,
+-              'import ctypes,sys; ctypes.CDLL(sys.argv[1]); print("loaded",sys.argv[1])', 'egl', name)
++              'import ctypes,sys; ctypes.CDLL(sys.argv[1]); print("loaded",sys.argv[1])', 'egl', name, vendor_json=vendor_json)
++    probe('GLVND dispatcher and NVIDIA EGL devices', EGL_PROBE, 'egl', str(native), vendor_json=vendor_json)
+     probe('fresh EGL MuJoCo and robosuite imports',
+-          'import mujoco; import robosuite; print("mujoco",mujoco.__version__); print("robosuite import OK")', 'egl')
++          'import mujoco; import robosuite; print("mujoco",mujoco.__version__); print("robosuite import OK")', 'egl', vendor_json=vendor_json)
+     record['imports_passed'] = True
++    record['graphics_mode'] = 'nvidia-glvnd'
+     atomic_json(manifest_path, record)
++    subprocess.run([sys.executable, '-I', '-B', str(helper.with_name('runtime.py')),
++                    'refresh-shell', '--state', str(state_dir / 'state.json')], check=True)
+     print('Loader repair completed. Validate actual rendering with doctor.py --profile libero --require-cuda --render under EGL.')
+     print(f'Original ELF backups: {backups}')
+     return 0
+diff --git a/scripts/setup/centos7/runtime.py b/scripts/setup/centos7/runtime.py
+--- a/scripts/setup/centos7/runtime.py
++++ b/scripts/setup/centos7/runtime.py
+@@ -204,6 +204,21 @@
+     for name in ("MAGICK_HOME", "MUJOCO_GL", "PYOPENGL_PLATFORM", "VK_ICD_FILENAMES"):
+         if os.environ.get(name):
+             env[name] = os.environ[name]
++    # A successful, explicitly requested LIBERO EGL repair owns this profile's
++    # backend selection. Keep the vendor route across refreshes and reinstall;
++    # a system Mesa ICD must not displace the staged NVIDIA vendor.
++    repair_path = state_dir / "loader-repair.json"
++    if profile == "libero" and repair_path.is_file():
++        repair = json.loads(repair_path.read_text())
++        if repair.get("root") == str(root) and repair.get("graphics_mode") == "nvidia-glvnd":
++            vendor_json = state_dir / "egl-vendor/10_fasterwam_nvidia.json"
++            expected = {"file_format_version": "1.0.0", "ICD": {
++                "library_path": str(state_dir / "native-libs/libEGL_nvidia.so.0")}}
++            if (vendor_json.resolve() != vendor_json or not vendor_json.is_file()
++                    or json.loads(vendor_json.read_text()) != expected):
++                raise RuntimeError(f"Invalid managed NVIDIA EGL vendor configuration: {vendor_json}")
++            env.update(MUJOCO_GL="egl", PYOPENGL_PLATFORM="egl",
++                       __EGL_VENDOR_LIBRARY_FILENAMES=str(vendor_json))
+     (state_dir / "bin").mkdir(exist_ok=True)
+     write_shell(state_dir / "activate.sh", activation_script(env, prefix_path, profile))
+     # uv pip's --python means install target, so use the venv here, not its base.
+diff --git a/scripts/setup/centos7/LOADER.zh-CN.md b/scripts/setup/centos7/LOADER.zh-CN.md
+--- a/scripts/setup/centos7/LOADER.zh-CN.md
++++ b/scripts/setup/centos7/LOADER.zh-CN.md
+@@ -1,61 +1,97 @@
+-# LIBERO：迁移后的 glibc 搜索路径与 EGL
++# LIBERO：私有 glibc 与 NVIDIA EGL 修复
+ 
+-适用于 Python 自身已使用私有 glibc 2.35，但 MuJoCo 3.3.2 独立导入失败的环境。
+-已确认的一类问题是 `_specs` 的 `RUNPATH=$ORIGIN` 绕过主 Python 的 RPATH，
+-随后自编译 loader 回退到旧构建目录，例如 `/root/.../glibc-2.35/lib`。
+-这时正确目录里的 `librt.so.1` 可以正常读取，错误并不需要通过 chmod 修复。
++适用于 Python 已使用私有 glibc 2.35、MuJoCo 固定为 3.3.2 的 CentOS 7 环境。
++本脚本只操作当前 repo 的 `.venvs/libero` 和 `.runtime/centos7/libero`。
++在没有进程使用这个 LIBERO 环境时应用；独立 core 环境的实验不需要停止。
+ 
+-从 repo 根目录，在停止使用 LIBERO 评测环境的进程后执行：
++## 对应的两个故障
++
++1. `_specs` 的 `RUNPATH=$ORIGIN` 绕过 Python 的 RPATH，导致迁移后的 loader
++   去旧构建目录寻找 `librt.so.1`。修复保留 `$ORIGIN`，给 MuJoCo DSO 补齐
++   私有 glibc 的 RPATH，并用全新进程、`MUJOCO_GL=disable` 验证独立导入。
++2. `libEGL.so.1` 能被 `ctypes.CDLL` 加载，但实际是旧 Mesa，随后出现
++   `DRI2: failed to open glapi provider` / `eglQueryDevicesEXT is not available`。
++   NVIDIA vendor 库存在，并不能证明当前 EGL 前端能分派到它。
++
++## 应用
++
++从 repo 根目录执行。`--build-glvnd` 下载固定版本的官方 libglvnd v1.7.0
++源码和 Meson 1.5.2 的纯 Python wheel，验证 SHA256，在 LIBERO 私有目录构建。
++不向虚拟环境安装 Meson；不下载/安装 NVIDIA 驱动。需要已有 C 编译器、系统
++C 开发头文件和环境内已修补的 ninja。构建禁用 X11/GLX，不需要 X11 开发包。
+ 
+ ```bash
+-.runtime/centos7/libero/run python scripts/setup/centos7/repair_libero_loader.py --apply
++(
++  set -o pipefail
++  .runtime/centos7/libero/run python -u \
++    scripts/setup/centos7/repair_libero_loader.py --apply --build-glvnd \
++    2>&1 | tee .runtime/centos7/libero/repair-loader-glvnd.log
++)
+ ```
+ 
+-修复只针对当前 repo 的私有 LIBERO 环境。它先备份 MuJoCo 的共享对象，
+-以原子复制替换方式补充私有 glibc、native-libs 和既有运行时路径，并保留
+-`$ORIGIN`。不改共享 uv 缓存，不向 DSO 添加 PT_INTERP。
+-随后用全新进程、`MUJOCO_GL=disable` 检查本体导入，避免先导入 Torch 掩盖问题。
+-
+-图形库来自当前服务器已有文件：只读查询系统 `ldconfig -p` 和常见安装目录，
+-找到 EGL/OpenGL、GLdispatch、NVIDIA EGL vendor 及其 ELF 依赖后，将需要的
+-非 glibc 库复制进当前 LIBERO 的 `native-libs`，给副本补充 RPATH。
+-系统 libc/loader、系统库、原始驱动文件和 core 环境不被修改。
+-可读取到驱动版本时，会拒绝文件名可识别且版本不匹配的 NVIDIA 库。
+-不会下载驱动、重装 Python 包，也不会全局设置 LD_LIBRARY_PATH。
+-
+-无 `--apply` 时只显示计划，并在独立子进程检查私有 librt 可加载性。
+-额外的已有图形库目录可重复指定：
++已有正确的 GLVND 时，可不编译，显式提供同一次安装的三个库所在目录：
+ 
+ ```bash
+ .runtime/centos7/libero/run python scripts/setup/centos7/repair_libero_loader.py \
+-  --apply --graphics-dir /actual/host/nvidia/lib64
++  --apply --glvnd-dir /actual/glvnd/lib
+ ```
+ 
+-如果输出 `GRAPHICS NOT READY`，MuJoCo 本体修复可能已经完成，但没有凑齐完整
+-图形库集合，脚本不会以猜测的版本安装驱动。输出会列出 FOUND/MISSING，保留
+-完整输出即可继续定位。NVIDIA vendor JSON 文件存在并不能证明对应动态库存在。
++该目录必须同时含 `libEGL.so.1`、`libOpenGL.so.0`、`libGLdispatch.so.0`
++及其有效目标。脚本验证 SONAME、GLdispatch 依赖、EGL vendor loader 标记，
++不会静默回退到系统旧 Mesa。未指定目录且没有历史记录时，会自动寻找合适的
++完整 GLVND 组合，包括被旧软链接遮住的版本化文件。
+ 
+-修复记录在 `.runtime/centos7/libero/loader-repair.json`，原始 ELF 备份在同目录的
+-`loader-repair-backups`。记录的 `originals` 将仓库相对文件路径映射到原始备份，
+-`graphics` 记录复制来源及哈希。正常重复执行会保留已修好的文件；检测到私有
+-图形库被其他操作修改时会停止，避免覆盖未知内容。
+-首次应用后，CentOS7 安装入口会在后续 uv 同步之后自动重做该适配。
+-直接绕过安装入口手动重装 MuJoCo 后，也需重新执行修复器。
+-
+-导入检查通过后验证 EGL 渲染（需可用 GPU）：
++NVIDIA 库从当前服务器读取：要求 `libEGL_nvidia.so.0` 及匹配版本的
++`libnvidia-eglcore.so.VERSION`，递归处理它们的 ELF 依赖。可读到驱动版本时，
++拒绝文件名版本不匹配的 NVIDIA 库。缺库时可以补充已有驱动库目录：
+ 
+ ```bash
+-.runtime/centos7/libero/run env MUJOCO_GL=egl PYOPENGL_PLATFORM=egl \
+-  python scripts/setup/centos7/doctor.py --profile libero --require-cuda --render
++.runtime/centos7/libero/run python scripts/setup/centos7/repair_libero_loader.py \
++  --apply --build-glvnd --graphics-dir /actual/host/nvidia/lib64
+ ```
+ 
+-全部通过后，将 `.runtime/centos7.env` 中的对应配置设为：
++若无法联网，先将下列两个固定文件传至服务器，再添加
++`--glvnd-source /path/v1.7.0.tar.gz --meson-wheel /path/meson-1.5.2-py3-none-any.whl`。
++它们只与 `--build-glvnd` 一起使用，SHA256 不匹配会停止：
++
++- 源码：<https://codeload.github.com/NVIDIA/libglvnd/tar.gz/refs/tags/v1.7.0>
++  SHA256 `073e7292788d4d3eeb45ea6c7bdcce9bfdb3b3eef8d7dbd47f2f30dce046ef98`。
++- Meson：<https://pypi.org/project/meson/1.5.2/#files>
++  wheel SHA256 `77706e2368a00d789c097632ccf4fc39251fba56d03e1e1b262559a3c7a08f5b`。
++
++## 安全重跑与检查
++
++无 `--apply` 时只显示计划，并以独立子进程检查私有 librt 可加载性。
++ELF 修改采用备份、复制及原子替换，保留原始文件，不改共享 uv 缓存，
++不向 DSO 添加 PT_INTERP。不会修改系统库、原始驱动、权限或 core 环境，
++不会全局设置 `LD_LIBRARY_PATH`。
++
++记录位于 `.runtime/centos7/libero/loader-repair.json`，原始 ELF 备份位于
++`loader-repair-backups`。新版会将旧脚本复制、但不再需要的图形依赖移到
++该备份目录；只移动记录内且哈希匹配的文件，保留其他文件和既有 C++ 运行库。
++检测到未知修改会停止。中断后可重跑同一命令，已构建并验证的 GLVND 会复用。
++CentOS7 安装入口在之后 uv 同步时会调用修复器，使用记录中的 GLVND 目录。
++
++检查依次包括：私有 librt、禁用图形的 MuJoCo 独立导入、图形库 dlopen、
++实际 EGL dispatcher 的 `1.5 libglvnd` 版本标记、`eglQueryDevicesEXT` 函数及
++设备数量、加载路径、全新进程中的 MuJoCo/robosuite EGL 导入。
++设备数为 0 会明确报错，需要检查作业 GPU 分配、设备权限和驱动可见性；
++这与 EGL 函数地址缺失不同。该步骤不创建渲染上下文。
++
++成功后脚本只刷新 LIBERO 的 `run`、`bin/uv`、`activate.sh`，持久化
++`MUJOCO_GL=egl`、`PYOPENGL_PLATFORM=egl` 和私有 NVIDIA vendor JSON 路径。
++此 profile 的修复记录优先于通用配置中的图形后端；不修改通用配置文件。
++已经激活的终端需重新 source `.runtime/centos7/libero/activate.sh`；
++直接使用下面的 `run` 不需要重新激活。
+ 
+ ```bash
+-MUJOCO_GL=egl
+-PYOPENGL_PLATFORM=egl
++(
++  set -o pipefail
++  .runtime/centos7/libero/run python -u scripts/setup/centos7/doctor.py \
++    --profile libero --require-cuda --render \
++    2>&1 | tee .runtime/centos7/libero/doctor-egl.log
++)
+ ```
+ 
+-然后 `bash scripts/setup/refresh_centos7_shell.sh libero`，使新的 launcher/activate
+-保存该设置；已经激活的终端再 source 一次 activate.sh。
+-Doctor 的简单渲染通过后，仍需实际 LIBERO 任务检查资产、相机及 GPU 分配。
++仅在 doctor 的实际渲染也通过后，才继续 LIBERO 评测。仍需用一个实际任务
++检查资产、相机及 GPU 分配；库导入或设备枚举成功不等于完整评测成功。
+diff --git a/scripts/setup/centos7/build_libero_glvnd.py b/scripts/setup/centos7/build_libero_glvnd.py
+new file mode 100644
+--- /dev/null
++++ b/scripts/setup/centos7/build_libero_glvnd.py
+@@ -0,0 +1,246 @@
++#!/usr/bin/env python3
++"""Build a private, matching GLVND EGL/OpenGL/GLdispatch bundle for LIBERO.
++
++No system packages, driver installation, or venv packages are changed. Downloads
++are pinned by SHA256. The existing compiler, C headers, nm, and patched ninja
++must work on this host. Call build_glvnd from repair_libero_loader.py.
++"""
++from __future__ import annotations
++
++import hashlib
++import json
++import os
++from pathlib import Path, PurePosixPath
++import shlex
++import shutil
++import subprocess
++import sys
++import tarfile
++import tempfile
++import urllib.request
++import zipfile
++
++SOURCE_URL = 'https://codeload.github.com/NVIDIA/libglvnd/tar.gz/refs/tags/v1.7.0'
++SOURCE_SHA256 = '073e7292788d4d3eeb45ea6c7bdcce9bfdb3b3eef8d7dbd47f2f30dce046ef98'
++MESON_URL = ('https://files.pythonhosted.org/packages/55/a6/'
++             '47b9353c331318a13eb050887eacfd61eb075746285f9baf7ef7de6ae235/'
++             'meson-1.5.2-py3-none-any.whl')
++MESON_SHA256 = '77706e2368a00d789c097632ccf4fc39251fba56d03e1e1b262559a3c7a08f5b'
++LIBRARIES = ('libEGL.so.1', 'libOpenGL.so.0', 'libGLdispatch.so.0')
++OPTIONS = ('-Dx11=disabled', '-Dglx=disabled', '-Degl=true', '-Dgles1=false',
++           '-Dgles2=false', '-Dheaders=false', '-Dhgl=false')
++
++
++def _digest(path: Path) -> str:
++    value = hashlib.sha256()
++    with path.open('rb') as stream:
++        for block in iter(lambda: stream.read(1024 * 1024), b''):
++            value.update(block)
++    return value.hexdigest()
++
++
++def _owned_directory(path: Path) -> None:
++    if path.is_symlink() or path.absolute() != path.resolve():
++        raise RuntimeError(f'Refusing symlink build directory: {path}')
++    path.mkdir(parents=True, exist_ok=True)
++
++
++def _artifact(url: str, expected: str, cache: Path, filename: str,
++              local: str | Path | None) -> Path:
++    path = Path(local).expanduser().resolve() if local else cache / filename
++    if not path.exists() and local:
++        raise RuntimeError(f'Offline build input does not exist: {path}')
++    if not path.exists():
++        print(f'DOWNLOAD {url}', flush=True)
++        fd, temporary = tempfile.mkstemp(prefix=filename + '.part-', dir=cache)
++        try:
++            with os.fdopen(fd, 'wb') as output:
++                request = urllib.request.Request(url, headers={'User-Agent': 'FasterWAM-LIBERO-GLVND/1'})
++                with urllib.request.urlopen(request, timeout=60) as response:
++                    if not response.url.startswith('https://'):
++                        raise RuntimeError('Refusing non-HTTPS download redirect')
++                    total = 0
++                    while True:
++                        block = response.read(1024 * 1024)
++                        if not block:
++                            break
++                        total += len(block)
++                        if total > 10 * 1024 * 1024:
++                            raise RuntimeError(f'Unexpectedly large build input: {url}')
++                        output.write(block)
++            if _digest(Path(temporary)) != expected:
++                raise RuntimeError(f'Download checksum mismatch: {url}')
++            os.replace(temporary, path)
++        finally:
++            if os.path.exists(temporary):
++                os.unlink(temporary)
++    if not path.is_file() or path.is_symlink() or _digest(path) != expected:
++        raise RuntimeError(f'Build input checksum mismatch: {path}; expected SHA256 {expected}')
++    print(f'VERIFIED SHA256 {path}', flush=True)
++    return path
++
++
++def _extract_source(archive: Path, destination: Path) -> Path:
++    # The exact authenticated archive contains one internal uthash symlink.
++    # Validate all paths and links before extracting, including on Python 3.10.
++    with tarfile.open(archive, 'r:gz') as source:
++        members = source.getmembers()
++        symlinks = set()
++        for item in members:
++            name = PurePosixPath(item.name)
++            if name.is_absolute() or '..' in name.parts or name.parts[0] != 'libglvnd-1.7.0':
++                raise RuntimeError(f'Unsafe source archive path: {item.name}')
++            if not (item.isfile() or item.isdir() or item.issym()):
++                raise RuntimeError(f'Unexpected source archive member: {item.name}')
++            if item.issym():
++                link = PurePosixPath(item.linkname)
++                if link.is_absolute() or '..' in link.parts:
++                    raise RuntimeError(f'Unsafe source archive link: {item.name}')
++                symlinks.add(name)
++        for item in members:
++            if any(parent in symlinks for parent in PurePosixPath(item.name).parents):
++                raise RuntimeError(f'Source archive writes through a link: {item.name}')
++        source.extractall(destination, members=members)
++    return destination / 'libglvnd-1.7.0'
++
++
++def _extract_meson(archive: Path, destination: Path) -> None:
++    with zipfile.ZipFile(archive) as wheel:
++        for item in wheel.infolist():
++            name = PurePosixPath(item.filename)
++            if name.is_absolute() or '..' in name.parts:
++                raise RuntimeError(f'Unsafe Meson wheel member: {item.filename}')
++        wheel.extractall(destination)
++
++
++def _run(command: list[str], *, env: dict[str, str], cwd: Path | None = None,
++         timeout: int = 600) -> None:
++    print('BUILD ' + shlex.join(command), flush=True)
++    subprocess.run(command, check=True, env=env, cwd=cwd, timeout=timeout)
++
++
++def _probe(libdir: Path, env: dict[str, str]) -> None:
++    env = env.copy()
++    # Test the frontend itself. Host ICDs, or an earlier repair's ICD, must
++    # not turn a successful frontend build into a driver/visibility failure.
++    env['__EGL_VENDOR_LIBRARY_FILENAMES'] = ''
++    code = '''import ctypes, pathlib, sys
++p = pathlib.Path(sys.argv[1])
++ctypes.CDLL(str(p / 'libGLdispatch.so.0'), mode=ctypes.RTLD_GLOBAL)
++egl = ctypes.CDLL(str(p / 'libEGL.so.1'))
++ctypes.CDLL(str(p / 'libOpenGL.so.0'))
++egl.eglQueryString.argtypes = (ctypes.c_void_p, ctypes.c_int)
++egl.eglQueryString.restype = ctypes.c_char_p
++version = egl.eglQueryString(None, 0x3054)
++if version != b'1.5 libglvnd':
++    raise RuntimeError('Unexpected private EGL version: %r' % (version,))
++egl.eglGetProcAddress.argtypes = (ctypes.c_char_p,)
++egl.eglGetProcAddress.restype = ctypes.c_void_p
++if not egl.eglGetProcAddress(b'eglQueryDevicesEXT'):
++    raise RuntimeError('Private GLVND has no eglQueryDevicesEXT dispatch address')
++print('PASS private GLVND build:', version.decode(), flush=True)
++'''
++    _run([sys.executable, '-I', '-B', '-u', '-c', code, str(libdir)], env=env, timeout=60)
++
++
++def _reusable(path: Path, base: Path, env: dict[str, str]) -> Path | None:
++    if not path.exists():
++        return None
++    if path.is_symlink():
++        raise RuntimeError(f'Refusing symlink build manifest: {path}')
++    record = json.loads(path.read_text())
++    prefix = Path(record.get('prefix', ''))
++    if (record.get('source_sha256') != SOURCE_SHA256 or record.get('options') != list(OPTIONS)
++            or prefix.parent != base or prefix.is_symlink() or prefix.resolve() != prefix):
++        raise RuntimeError(f'Unexpected private GLVND build manifest: {path}')
++    libdir = prefix / 'lib'
++    for name in LIBRARIES:
++        target = (libdir / name).resolve()
++        if (target.parent != libdir or not target.is_file()
++                or _digest(target) != record.get('libraries', {}).get(name)):
++            raise RuntimeError(f'Owned private GLVND build was modified or is incomplete: {libdir / name}')
++    _probe(libdir, env)
++    print(f'REUSE private GLVND: {libdir}', flush=True)
++    return libdir
++
++
++def build_glvnd(state: dict, source_archive: str | Path | None = None,
++                *, meson_wheel: str | Path | None = None) -> Path:
++    """Return an owned libdir with matching libEGL/OpenGL/GLdispatch, reusing it safely."""
++    if state.get('profile') != 'libero':
++        raise RuntimeError('Private GLVND builder is scoped to the LIBERO runtime.')
++    runtime = Path(state['root']) / '.runtime/centos7/libero'
++    base = runtime / 'private-glvnd'
++    cache = runtime / 'glvnd-build'
++    for path in (runtime, base, cache):
++        _owned_directory(path)
++    env = os.environ.copy()
++    for key in ('LD_LIBRARY_PATH', 'LD_PRELOAD', 'LD_DEBUG', 'LD_DEBUG_OUTPUT', 'PYTHONHOME', 'PYTHONPATH'):
++        env.pop(key, None)
++    env['PYTHONNOUSERSITE'] = '1'
++    manifest = base / 'build.json'
++    existing = _reusable(manifest, base, env)
++    if existing:
++        return existing
++    ninja = Path(state['venv']) / 'bin/ninja'
++    if not ninja.is_file() or not os.access(ninja, os.X_OK):
++        raise RuntimeError(f'Existing patched ninja executable is required: {ninja}')
++    _run([str(ninja), '--version'], env=env, timeout=30)
++    compiler = shlex.split(env.get('CC', 'cc'))
++    if not compiler or not shutil.which(compiler[0], path=env.get('PATH')):
++        raise RuntimeError('C compiler not found; check FASTERWAM_GCC_ROOT and the runtime launcher.')
++    _run(compiler + ['--version'], env=env, timeout=30)
++    if not shutil.which('nm', path=env.get('PATH')):
++        raise RuntimeError('nm is required; make the existing binutils installation available in PATH.')
++    jobs = int(env.get('MAX_JOBS', '2'))
++    if jobs < 1:
++        raise RuntimeError('MAX_JOBS must be a positive integer.')
++    source_tar = _artifact(SOURCE_URL, SOURCE_SHA256, cache, 'libglvnd-v1.7.0.tar.gz', source_archive)
++    meson_archive = _artifact(MESON_URL, MESON_SHA256, cache, 'meson-1.5.2-py3-none-any.whl', meson_wheel)
++    work = Path(tempfile.mkdtemp(prefix='work-', dir=cache))
++    prefix = base / ('v1.7.0-' + work.name.removeprefix('work-'))
++    tools_dir = work / 'tools'
++    tools_dir.mkdir()
++    _extract_meson(meson_archive, tools_dir)
++    source = _extract_source(source_tar, work)
++    build_dir, staging = work / 'build', work / 'staging'
++    # Running meson.py explicitly makes Meson's generated Python commands use
++    # this private interpreter, without modifying PYTHONPATH or the venv.
++    meson_script = tools_dir / 'meson.py'
++    meson_script.write_text('import sys\nsys.path.insert(0, ' + repr(str(tools_dir)) + ')\n'
++                            'from mesonbuild.mesonmain import main\nraise SystemExit(main())\n')
++    meson = [sys.executable, '-I', '-B', str(meson_script)]
++    env['NINJA'] = str(ninja)
++    _run(meson + ['setup', str(build_dir), str(source), '--prefix=' + str(prefix),
++                  '--libdir=lib', '--buildtype=release', '--wrap-mode=nodownload', *OPTIONS], env=env)
++    _run([str(ninja), '-C', str(build_dir), '-j', str(jobs)], env=env)
++    _run(meson + ['install', '-C', str(build_dir), '--no-rebuild', '--destdir', str(staging)], env=env)
++    installed = staging / str(prefix).lstrip('/')
++    libdir = installed / 'lib'
++    hashes = {}
++    for name in LIBRARIES:
++        library = (libdir / name).resolve()
++        if library.parent != libdir or not library.is_file():
++            raise RuntimeError(f'Build did not produce the expected library: {libdir / name}')
++        # Stage only our own newly built DSOs; the loader and other libraries
++        # remain untouched. Copies into native-libs are handled by the caller.
++        rpath = ':'.join(dict.fromkeys([str(Path(state['loader']).parent), str(prefix / 'lib')]))
++        _run([state['patchelf'], '--force-rpath', '--set-rpath', rpath, str(library)], env=env, timeout=30)
++        hashes[name] = _digest(library)
++    os.rename(installed, prefix)
++    final_libdir = prefix / 'lib'
++    _probe(final_libdir, env)
++    record = {'source_url': SOURCE_URL, 'source_sha256': SOURCE_SHA256,
++              'meson_sha256': MESON_SHA256, 'prefix': str(prefix), 'options': list(OPTIONS),
++              'compiler': compiler, 'libraries': hashes}
++    fd, temporary = tempfile.mkstemp(prefix='build.json.new-', dir=base)
++    try:
++        with os.fdopen(fd, 'w') as output:
++            json.dump(record, output, indent=2)
++            output.write('\n')
++        os.replace(temporary, manifest)
++    finally:
++        if os.path.exists(temporary):
++            os.unlink(temporary)
++    print(f'BUILT private GLVND: {final_libdir}', flush=True)
++    return final_libdir
