@@ -294,8 +294,9 @@ def main():
     args = parser.parse_args()
     if args.runtime_only and (args.require_cuda or args.video or args.render):
         parser.error("--runtime-only cannot be combined with --require-cuda, --video, or --render")
+    # Match the LIBERO evaluation launchers even for import-only checks.
     # MuJoCo reads this setting during its first import in package_check().
-    if args.render:
+    if args.profile.startswith("libero") and not args.runtime_only:
         backend = os.environ.setdefault("MUJOCO_GL", "osmesa")
         if backend in ("osmesa", "egl"):
             os.environ.setdefault("PYOPENGL_PLATFORM", backend)

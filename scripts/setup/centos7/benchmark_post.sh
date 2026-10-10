@@ -27,6 +27,15 @@ case "${PROFILE}" in
     fi
     "${ENV_DIR}/bin/python" "${SETUP_DIR}/configure_libero.py" \
       --source-root "${SOURCE_DIR}" --config-dir "${ROOT}/.runtime/${PROFILE}"
+    if [[ "${PROFILE}" == libero ]]; then
+      # Migrating the old dual-provider lock can remove shared cv2 files even
+      # when headless metadata remains installed. Verify and repair that case.
+      "${ENV_DIR}/bin/python" -I "${SETUP_DIR}/centos7/repair_libero_opencv.py" --repair
+      # Reapply the opted-in ELF/host-EGL repair after uv replaces wheel files.
+      if [[ -f "${ROOT}/.runtime/centos7/libero/loader-repair.json" ]]; then
+        "${ENV_DIR}/bin/python" -I "${SETUP_DIR}/centos7/repair_libero_loader.py" --root "${ROOT}" --apply
+      fi
+    fi
     ;;
   robotwin)
     SOURCE_DIR="${ROOT}/third_party/RoboTwin"

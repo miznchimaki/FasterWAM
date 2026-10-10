@@ -204,6 +204,21 @@ def write_shell_files(state: dict) -> None:
     for name in ("MAGICK_HOME", "MUJOCO_GL", "PYOPENGL_PLATFORM", "VK_ICD_FILENAMES"):
         if os.environ.get(name):
             env[name] = os.environ[name]
+    # A successful, explicitly requested LIBERO EGL repair owns this profile's
+    # backend selection. Keep the vendor route across refreshes and reinstall;
+    # a system Mesa ICD must not displace the staged NVIDIA vendor.
+    repair_path = state_dir / "loader-repair.json"
+    if profile == "libero" and repair_path.is_file():
+        repair = json.loads(repair_path.read_text())
+        if repair.get("root") == str(root) and repair.get("graphics_mode") == "nvidia-glvnd":
+            vendor_json = state_dir / "egl-vendor/10_fasterwam_nvidia.json"
+            expected = {"file_format_version": "1.0.0", "ICD": {
+                "library_path": str(state_dir / "native-libs/libEGL_nvidia.so.0")}}
+            if (vendor_json.resolve() != vendor_json or not vendor_json.is_file()
+                    or json.loads(vendor_json.read_text()) != expected):
+                raise RuntimeError(f"Invalid managed NVIDIA EGL vendor configuration: {vendor_json}")
+            env.update(MUJOCO_GL="egl", PYOPENGL_PLATFORM="egl",
+                       __EGL_VENDOR_LIBRARY_FILENAMES=str(vendor_json))
     (state_dir / "bin").mkdir(exist_ok=True)
     write_shell(state_dir / "activate.sh", activation_script(env, prefix_path, profile))
     # uv pip's --python means install target, so use the venv here, not its base.

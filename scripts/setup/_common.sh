@@ -39,14 +39,15 @@ fasterwam_clone_pinned() {
   local revision="$2"
   local target="$3"
   if [ -d "${target}" ]; then
-    if ! git -C "${target}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    # CentOS 7's system Git may not support -C. A subshell also preserves cwd.
+    if ! (cd -- "${target}" && git rev-parse --is-inside-work-tree) >/dev/null 2>&1; then
       echo "Cannot verify source revision because this is not a Git checkout: ${target}" >&2
       exit 1
     fi
     local actual_revision
     local expected_revision
-    actual_revision="$(git -C "${target}" rev-parse HEAD)"
-    expected_revision="$(git -C "${target}" rev-parse "${revision}^{commit}")"
+    actual_revision="$(cd -- "${target}" && git rev-parse HEAD)"
+    expected_revision="$(cd -- "${target}" && git rev-parse "${revision}^{commit}")"
     if [ "${actual_revision}" != "${expected_revision}" ]; then
       echo "Source revision mismatch for ${target}" >&2
       echo "  expected: ${revision} (${expected_revision})" >&2
@@ -57,5 +58,5 @@ fasterwam_clone_pinned() {
   fi
   mkdir -p "$(dirname "${target}")"
   git clone "${repo_url}" "${target}"
-  git -C "${target}" checkout "${revision}"
+  (cd -- "${target}" && git checkout "${revision}")
 }

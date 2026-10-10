@@ -49,6 +49,9 @@ dependencies = [
 [tool.uv]
 package = false
 environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+# robosuite declares the GUI wheel, but LIBERO evaluation uses offscreen rendering.
+# The GUI and headless wheels both own cv2 and must not be installed together.
+exclude-dependencies = ["opencv-python"]
 
 [tool.uv.extra-build-dependencies]
 egl-probe = ["cmake==3.31.10"]
