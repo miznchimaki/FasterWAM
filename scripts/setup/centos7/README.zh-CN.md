@@ -289,6 +289,11 @@ python scripts/setup/centos7/doctor.py --profile core --require-cuda
 
 ## 5. 可选评测环境
 
+LIBERO-Plus 在 CentOS 7 下的 OpenCV / NVIDIA EGL / 原生 MagickWand
+修复入口见 [LIBERO_PLUS.zh-CN.md](LIBERO_PLUS.zh-CN.md)。已完成资产下载但
+最终 doctor 失败时，可执行 `bash scripts/setup/repair_centos7_libero_plus.sh`，
+继续修复现有环境，无需重新下载资产。
+
 只训练时无需安装下列环境。按你要跑的 benchmark 单独安装：
 
 | profile | 上游目录 | 锁定 Torch |

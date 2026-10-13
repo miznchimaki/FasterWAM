@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Repair owned MuJoCo ELF search paths and stage existing host EGL libraries.
 
-Run with the private LIBERO Python from repo root. Without --apply, only print
+Run with the selected private LIBERO / LIBERO-Plus Python from repo root.
+Without --apply, only print
 the plan. --build-glvnd explicitly permits downloading/building a private GLVND
 dispatcher. No system-library changes, global LD_LIBRARY_PATH, or GPU rendering.
 Rendering is verified separately by doctor.py --render.
@@ -15,6 +16,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import struct
 import subprocess
@@ -65,7 +67,7 @@ def desired_rpath(state: dict, old: str) -> str:
     existing = [p for p in old.split(':') if p]
     origins = [p for p in existing if '$ORIGIN' in p or '${ORIGIN}' in p]
     values = [str(Path(state['loader']).parent),
-              str(Path(state['root']) / '.runtime/centos7/libero/native-libs')]
+              str(Path(state['private']).parent / 'native-libs')]
     values += origins or ['$ORIGIN']
     values += state['rpath']
     values += existing
@@ -152,6 +154,71 @@ def owned_hash(path: Path, known: dict) -> str:
     if not known or actual not in allowed:
         raise RuntimeError(f'Unmanaged or externally changed graphics file: {path}')
     return actual
+
+
+def reusable_graphics(root: Path, profile: str):
+    """Read hash-verified donor copies, even when original host paths vanished.
+
+    Return explicit SONAME mappings rather than adding another profile's entire
+    native-libs directory to the target's library search path. Never write donor
+    files or infer a driver's version from a renamed libEGL_nvidia.so.0 alone.
+    """
+    if profile not in ('libero', 'libero-plus'):
+        raise RuntimeError('Invalid graphics donor profile: ' + str(profile))
+    directory = root / '.runtime/centos7' / profile
+    manifest = directory / 'loader-repair.json'
+    if directory.resolve() != directory or manifest.is_symlink():
+        raise RuntimeError('Refusing symlink graphics donor: ' + str(manifest))
+    if not manifest.exists():
+        return {}, {}, []  # A GLVND build alone has no repaired vendor bundle.
+    record = json.loads(manifest.read_text())
+    if (record.get('root') != str(root) or record.get('profile') != profile
+            or record.get('imports_passed') is not True
+            or record.get('graphics_mode') != 'nvidia-glvnd'):
+        raise RuntimeError('Graphics donor has no successful matching repair: ' + str(manifest))
+    native = directory / 'native-libs'
+    if native.resolve() != native:
+        raise RuntimeError('Refusing symlink graphics donor directory: ' + str(native))
+    sources, versions = {}, {}
+    # The dispatch trio is verified separately by the GLVND builder. Python
+    # support libraries must keep using the target base Python's own providers.
+    excluded = {'libEGL.so.1', 'libOpenGL.so.0', 'libGLdispatch.so.0',
+                'libexpat.so.1', 'libz.so.1'}
+    for name, known in record.get('graphics', {}).items():
+        if not name or Path(name).name != name or name in ('.', '..') or '\\' in name:
+            raise RuntimeError('Invalid graphics donor SONAME: ' + repr(name))
+        if name in excluded:
+            continue
+        if known.get('pending'):
+            raise RuntimeError('Graphics donor repair is incomplete: ' + name)
+        path = native / name
+        owned_hash(path, known)
+        if not elf_dso(path):
+            raise RuntimeError('Graphics donor is not x86_64 ELF: ' + str(path))
+        if name.startswith(('libEGL_nvidia', 'libGLX_nvidia', 'libnvidia-')):
+            version = known.get('nvidia_version')
+            match = re.search(r'\.so\.(\d{3,}\.\d+(?:\.\d+)?)$',
+                              Path(known.get('source', '')).name)
+            if match:
+                if version and version != match.group(1):
+                    raise RuntimeError('Conflicting graphics donor driver versions: ' + name)
+                version = match.group(1)
+            if not isinstance(version, str) or not re.fullmatch(r'\d{3,}\.\d+(?:\.\d+)?', version):
+                raise RuntimeError('Cannot verify NVIDIA donor driver version: ' + name)
+            versions[name] = version
+        sources[name] = path
+    if 'libEGL_nvidia.so.0' not in sources:
+        raise RuntimeError('Successful graphics donor has no NVIDIA EGL vendor record.')
+    print('REUSE verified graphics from ' + profile + ': ' + ', '.join(sorted(sources)), flush=True)
+    return sources, versions, record.get('graphics_dirs', [])
+
+
+def graphics_rpath(state, source, reused_sources):
+    # A donor's absolute RPATH points into its own native-libs. Only copy bytes;
+    # give the new DSO the target runtime's search paths, with no donor fallback.
+    old = '$ORIGIN' if source in reused_sources.values() else capture(
+        state['patchelf'], '--print-rpath', str(source))
+    return desired_rpath(state, old)
 
 
 def retire_obsolete(native, backups, record, plan, manifest_path):
@@ -346,27 +413,33 @@ if count.value == 0:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apply', action='store_true', help='Apply changes to the owned LIBERO environment')
+    parser.add_argument('--profile', choices=('libero', 'libero-plus'), default='libero')
     parser.add_argument('--root', type=Path, default=Path.cwd())
     parser.add_argument('--graphics-dir', action='append', default=[], help='Additional existing host graphics-library source directory; repeatable')
     parser.add_argument('--glvnd-dir', type=Path, help='Existing coherent GLVND source lib directory; never fall back to host Mesa')
     parser.add_argument('--build-glvnd', action='store_true', help='Download and build pinned GLVND privately (requires --apply)')
+    parser.add_argument('--reuse-glvnd-from', choices=('libero', 'libero-plus'),
+                        help='Read and verify another profile\'s built GLVND; only the selected target is modified')
     parser.add_argument('--glvnd-source', type=Path, help='Verified local v1.7.0 source archive, for --build-glvnd without a GitHub download')
     parser.add_argument('--meson-wheel', type=Path, help='Verified local Meson 1.5.2 wheel for an offline private build')
     parser.add_argument('--ninja-wheel', type=Path, help='Verified local Ninja 1.11.1.4 Linux x86_64 wheel for an offline private build')
     args = parser.parse_args()
-    if args.build_glvnd and (not args.apply or args.glvnd_dir):
-        parser.error('--build-glvnd requires --apply and cannot be combined with --glvnd-dir')
+    if args.build_glvnd and (not args.apply or args.glvnd_dir or args.reuse_glvnd_from):
+        parser.error('--build-glvnd requires --apply and cannot be combined with --glvnd-dir or --reuse-glvnd-from')
+    if args.reuse_glvnd_from and (not args.apply or args.glvnd_dir or args.reuse_glvnd_from == args.profile):
+        parser.error('--reuse-glvnd-from requires --apply, a different source profile, and no --glvnd-dir')
     if (args.glvnd_source or args.meson_wheel or args.ninja_wheel) and not args.build_glvnd:
         parser.error('--glvnd-source/--meson-wheel/--ninja-wheel requires --build-glvnd')
     root = args.root.resolve()
-    state_dir = root / '.runtime/centos7/libero'
+    profile = args.profile
+    state_dir = root / '.runtime/centos7' / profile
     state = json.loads((state_dir / 'state.json').read_text())
-    venv = root / '.venvs/libero'
+    venv = root / '.venvs' / profile
     private = state_dir / 'python-base'
-    if (state.get('root') != str(root) or state.get('profile') != 'libero'
+    if (state.get('root') != str(root) or state.get('profile') != profile
             or state.get('venv') != str(venv) or state.get('private') != str(private)
             or Path(sys.prefix) != venv or Path(sys.base_prefix) != private):
-        raise RuntimeError('Use this repository\'s .runtime/centos7/libero/run python launcher.')
+        raise RuntimeError(f'Use this repository\'s .runtime/centos7/{profile}/run python launcher.')
     if importlib.metadata.version('mujoco') != '3.3.2':
         raise RuntimeError('This repair targets the locked mujoco==3.3.2.')
     native = state_dir / 'native-libs'
@@ -376,10 +449,39 @@ def main() -> int:
         if path.is_symlink():
             raise RuntimeError(f'Refusing symlink at owned repair path: {path}')
     previous = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
-    if previous and previous.get('root') != str(root):
-        raise RuntimeError('Repair manifest belongs to another repository.')
+    if previous and (previous.get('root') != str(root) or previous.get('profile') != profile):
+        raise RuntimeError('Repair manifest belongs to another repository or profile.')
     extra_dirs = args.graphics_dir or previous.get('graphics_dirs', [])
     glvnd_dir = args.glvnd_dir or previous.get('glvnd_dir')
+    reuse_profile = args.reuse_glvnd_from
+    if not reuse_profile and not (args.build_glvnd or args.glvnd_dir or args.graphics_dir):
+        reuse_profile = previous.get('graphics_reuse_from')
+    if reuse_profile and (reuse_profile not in ('libero', 'libero-plus') or reuse_profile == profile):
+        raise RuntimeError('Invalid saved graphics donor profile.')
+    reused_sources, reused_versions = {}, {}
+    if reuse_profile:
+        # Verify the source build in a fresh target-profile Python. Never invoke
+        # a source-profile launcher or rewrite any source manifest/library.
+        build_spec = importlib.util.spec_from_file_location(
+            'fasterwam_build_glvnd', Path(__file__).with_name('build_libero_glvnd.py'))
+        builder = importlib.util.module_from_spec(build_spec)
+        build_spec.loader.exec_module(builder)
+        source_dir = root / '.runtime/centos7' / reuse_profile
+        source_state = json.loads((source_dir / 'state.json').read_text())
+        if (source_dir.resolve() != source_dir or source_state.get('root') != str(root)
+                or source_state.get('profile') != reuse_profile
+                or source_state.get('private') != str(source_dir / 'python-base')):
+            raise RuntimeError('GLVND source runtime belongs to another repository/profile.')
+        build_base = source_dir / 'private-glvnd'
+        source_env = os.environ.copy()
+        for key in ('LD_LIBRARY_PATH', 'LD_PRELOAD', 'LD_DEBUG', 'LD_DEBUG_OUTPUT', 'PYTHONHOME', 'PYTHONPATH'):
+            source_env.pop(key, None)
+        glvnd_dir = builder._reusable(build_base / 'build.json', build_base, source_env)
+        if glvnd_dir is None:
+            raise RuntimeError('No verified source GLVND build; use --apply --build-glvnd for the target profile instead.')
+        if not args.graphics_dir:
+            reused_sources, reused_versions, donor_dirs = reusable_graphics(root, reuse_profile)
+            extra_dirs = list(dict.fromkeys([*extra_dirs, *donor_dirs]))
     probe('private librt is loadable',
           'import ctypes,sys; ctypes.CDLL(sys.argv[1]); print(sys.argv[1])',
           'disable', str(Path(state['loader']).parent / 'librt.so.1'))
@@ -400,7 +502,11 @@ def main() -> int:
     # Save bookkeeping after each completed replacement, so interruptions can
     # resume safely and later uv reinstallation can be repaired again.
     record = dict(previous)
-    record.update(root=str(root), profile='libero', graphics_dirs=extra_dirs)
+    record.update(root=str(root), profile=profile, graphics_dirs=extra_dirs)
+    if reuse_profile and not args.graphics_dir:
+        record['graphics_reuse_from'] = reuse_profile
+    else:
+        record.pop('graphics_reuse_from', None)
     record.setdefault('mujoco', {})
     record.setdefault('graphics', {})
     record.setdefault('originals', {})
@@ -431,7 +537,8 @@ def main() -> int:
         glvnd_dir = builder.build_glvnd(state, source_archive=args.glvnd_source,
                                       meson_wheel=args.meson_wheel, ninja_wheel=args.ninja_wheel)
     try:
-        plan = module.plan_graphics(state, extra_dirs, glvnd_dir=glvnd_dir)
+        plan = module.plan_graphics(state, extra_dirs, glvnd_dir=glvnd_dir,
+                                    source_libraries=reused_sources, source_versions=reused_versions)
     except module.GraphicsError as error:
         print(f'GRAPHICS NOT READY: {error}', file=sys.stderr)
         for detail in getattr(error, 'details', []):
@@ -460,11 +567,12 @@ def main() -> int:
         destination = native / name
         old = record['graphics'].get(name, {})
         source_hash = digest(source)
+        wanted_rpath = graphics_rpath(state, source, reused_sources)
         if (destination.exists() and old.get('source_sha256') == source_hash
                 and old.get('patched_sha256') == digest(destination)
                 and not has_runpath(destination)
                 and capture(state['patchelf'], '--print-rpath', str(destination))
-                == desired_rpath(state, capture(state['patchelf'], '--print-rpath', str(source)))):
+                == wanted_rpath):
             print(f'UNCHANGED {destination}', flush=True)
         else:
             previous_hash = digest(destination) if destination.exists() else None
@@ -473,7 +581,10 @@ def main() -> int:
                                                patched_sha256=patched_hash, pending=True,
                                                previous_sha256=previous_hash)
                 atomic_json(manifest_path, record)
-            patch_copy(source, destination, state, backups, before_publish=before_publish)
+            patch_copy(source, destination, state, backups, before_publish=before_publish,
+                       rpath_override=wanted_rpath)
+        if name in reused_versions:
+            record['graphics'][name]['nvidia_version'] = reused_versions[name]
         record['graphics'][name].pop('pending', None)
         record['graphics'][name].pop('previous_sha256', None)
         atomic_json(manifest_path, record)
@@ -502,7 +613,7 @@ def main() -> int:
     atomic_json(manifest_path, record)
     subprocess.run([sys.executable, '-I', '-B', str(helper.with_name('runtime.py')),
                     'refresh-shell', '--state', str(state_dir / 'state.json')], check=True)
-    print('Loader repair completed. Validate actual rendering with doctor.py --profile libero --require-cuda --render under EGL.')
+    print(f'Loader repair completed. Validate actual rendering with doctor.py --profile {profile} --require-cuda --render under EGL.')
     print(f'Original ELF backups: {backups}')
     return 0
 

@@ -27,15 +27,19 @@ case "${PROFILE}" in
     fi
     "${ENV_DIR}/bin/python" "${SETUP_DIR}/configure_libero.py" \
       --source-root "${SOURCE_DIR}" --config-dir "${ROOT}/.runtime/${PROFILE}"
-    if [[ "${PROFILE}" == libero ]]; then
-      # Migrating the old dual-provider lock can remove shared cv2 files even
-      # when headless metadata remains installed. Verify and repair that case.
-      "${ENV_DIR}/bin/python" -I "${SETUP_DIR}/centos7/repair_libero_opencv.py" --repair
-      # Reapply the opted-in ELF/host-EGL repair after uv replaces wheel files.
-      if [[ -f "${ROOT}/.runtime/centos7/libero/loader-repair.json" ]]; then
-        "${ENV_DIR}/bin/python" -I "${SETUP_DIR}/centos7/repair_libero_loader.py" --root "${ROOT}" --apply
-      fi
+    # Migrating the old dual-provider lock can remove shared cv2 files even
+    # when headless metadata remains installed. Verify and repair both profiles.
+    "${ENV_DIR}/bin/python" -I "${SETUP_DIR}/centos7/repair_libero_opencv.py" --profile "${PROFILE}" --repair
+    # Reapply the opted-in ELF/host-EGL repair after uv replaces wheel files.
+    if [[ -f "${ROOT}/.runtime/centos7/${PROFILE}/loader-repair.json" ]]; then
+      "${ENV_DIR}/bin/python" -I "${SETUP_DIR}/centos7/repair_libero_loader.py" --root "${ROOT}" --profile "${PROFILE}" --apply
     fi
+    if [[ "${PROFILE}" == libero-plus && -f "${ROOT}/.runtime/centos7/libero-plus/private-imagemagick/build.json" ]]; then
+      "${ENV_DIR}/bin/python" -I "${SETUP_DIR}/centos7/build_libero_plus_imagemagick.py" --apply
+    fi
+    # Repairs refresh these files in a subprocess; adopt the result before
+    # the installer's final doctor instead of retaining the old OSMesa env.
+    source "${ROOT}/.runtime/centos7/${PROFILE}/activate.sh"
     ;;
   robotwin)
     SOURCE_DIR="${ROOT}/third_party/RoboTwin"

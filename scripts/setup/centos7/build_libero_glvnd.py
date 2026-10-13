@@ -242,9 +242,9 @@ def build_glvnd(state: dict, source_archive: str | Path | None = None,
                 *, meson_wheel: str | Path | None = None,
                 ninja_wheel: str | Path | None = None) -> Path:
     """Return an owned libdir with matching libEGL/OpenGL/GLdispatch, reusing it safely."""
-    if state.get('profile') != 'libero':
-        raise RuntimeError('Private GLVND builder is scoped to the LIBERO runtime.')
-    runtime = Path(state['root']) / '.runtime/centos7/libero'
+    if state.get('profile') not in ('libero', 'libero-plus'):
+        raise RuntimeError('Private GLVND builder is scoped to LIBERO and LIBERO-Plus runtimes.')
+    runtime = Path(state['root']) / '.runtime/centos7' / state['profile']
     base = runtime / 'private-glvnd'
     cache = runtime / 'glvnd-build'
     for path in (runtime, base, cache):

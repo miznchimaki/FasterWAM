@@ -131,19 +131,33 @@ def base_runtime_library(state, name):
     return real
 
 
-def plan_graphics(state, extra_dirs=(), glvnd_dir=None):
+def plan_graphics(state, extra_dirs=(), glvnd_dir=None, *, source_libraries=None,
+                  source_versions=None):
     """Return ``{load_name: real_source}`` for a host NVIDIA EGL dependency closure.
 
     ``GraphicsError`` contains any partial inventory and missing libraries. This
     function only reads files and executes ldconfig -p, patchelf inspection and,
     when needed, nvidia-smi's driver-version query. It never creates a GL context.
     The caller must check ownership before replacing existing staging targets.
+    Optional source_libraries maps SONAMEs to individually verified
+    donor-profile copies. The caller verifies their manifest/hash provenance;
+    this planner checks their ELF SONAME and, for NVIDIA libraries, explicit
+    source_versions against the running driver. It never searches the donor
+    directory for other files.
     """
     glibc = Path(state["glibc"]).resolve()
     glibc_lib = Path(state["loader"]).resolve().parent
     native = (Path(state["private"]).parent / "native-libs").resolve()
     cache, details = _cache()
     driver = _driver_version()
+    source_libraries = dict(source_libraries or {})
+    source_versions = dict(source_versions or {})
+    for name in source_libraries:
+        _basename(name)
+        if _glibc_name(name) or name in ("libstdc++.so.6", "libgcc_s.so.1"):
+            raise GraphicsError("Refusing a mapped source with reserved SONAME " + name)
+    if set(source_versions) - set(source_libraries):
+        raise GraphicsError("NVIDIA source version metadata has no corresponding mapped library.")
     if driver:
         details.append("Running NVIDIA driver: " + driver)
     else:
@@ -244,6 +258,36 @@ def plan_graphics(state, extra_dirs=(), glvnd_dir=None):
         if support is not None:
             return support
         is_nvidia = name.startswith(("libnvidia-", "libEGL_nvidia", "libGLX_nvidia"))
+        if name in source_libraries:
+            real = _readable_elf(source_libraries[name])
+            if real is None:
+                raise GraphicsError("Verified graphics source is no longer readable x86_64 ELF: "
+                                    + str(source_libraries[name]), found=found)
+            if inspect(real, "--print-soname") != name:
+                raise GraphicsError("Unexpected SONAME for mapped graphics source " + str(real)
+                                    + "; expected " + name, found=found)
+            if not is_nvidia:
+                return real
+            version = source_versions.get(name)
+            if not isinstance(version, str) or not re.fullmatch(r"\d{3,}\.\d+(?:\.\d+)?", version):
+                raise GraphicsError("Missing or invalid NVIDIA source version for " + name, found=found)
+            for filename in (name, real.name):
+                match = re.search(r"\.so\.(\d{3,}\.\d+(?:\.\d+)?)$", filename)
+                if match and match.group(1) != version:
+                    raise GraphicsError("NVIDIA source version disagrees with filename " + filename,
+                                        found=found)
+            if driver is None:
+                raise GraphicsError("Cannot reuse NVIDIA sources without a detected running driver version.",
+                                    found=found)
+            if version != driver:
+                raise GraphicsError("NVIDIA source version {} differs from running driver {}: {}".format(
+                    version, driver, real), found=found)
+            if name == "libEGL_nvidia.so.0":
+                # Copies are renamed to SONAME, losing the driver's version.
+                # Keep the verified version, but do not search the donor's
+                # directory: every reused library needs its own verification.
+                vendor_dir, vendor_version = None, version
+            return real
         candidates = ([vendor_dir / name] if is_nvidia and vendor_dir else [])
         candidates += [Path(p).expanduser() / name for p in extra_dirs]
         candidates += cache.get(name, [])
