@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Keep exactly one headless OpenCV provider in the private LIBERO environment.
+"""Keep exactly one headless OpenCV provider in a private LIBERO environment.
 
 Use .runtime/centos7/libero/run python <this-file> --repair after applying the
-matching pyproject/lock fix. No GPU or rendering context is created here.
+matching pyproject/lock fix. For LIBERO-Plus, use its run launcher and add
+--profile libero-plus. No GPU or rendering context is created here.
 """
 from __future__ import annotations
 
@@ -88,20 +89,26 @@ def ensure_headless(python: str, uv: str, before: dict[str, str], repair: bool) 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--profile", choices=("libero", "libero-plus"), default="libero",
+                        help="Private environment to check or repair (default: libero)")
     parser.add_argument("--repair", action="store_true", help="Repair the two known conflicting providers")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[3]
-    state_dir = root / ".runtime/centos7/libero"
+    state_dir = root / ".runtime/centos7" / args.profile
     state = json.loads((state_dir / "state.json").read_text())
-    venv = root / ".venvs/libero"
+    venv = root / ".venvs" / args.profile
     private = state_dir / "python-base"
-    if (state.get("root") != str(root) or state.get("profile") != "libero"
+    if (state.get("root") != str(root) or state.get("profile") != args.profile
             or state.get("venv") != str(venv) or state.get("private") != str(private)
             or Path(sys.prefix) != venv or Path(sys.base_prefix) != private):
-        raise RuntimeError("Run this helper with this repository's private LIBERO Python only.")
+        raise RuntimeError(
+            f"Run this helper with this repository's private {args.profile} Python only: "
+            f".runtime/centos7/{args.profile}/run python "
+            "scripts/setup/centos7/repair_libero_opencv.py "
+            f"--profile {args.profile}")
     uv = state_dir / "bin/uv"
     if not uv.is_file() or not os.access(uv, os.X_OK):
-        raise RuntimeError(f"Missing prepared LIBERO uv launcher: {uv}")
+        raise RuntimeError(f"Missing prepared {args.profile} uv launcher: {uv}")
     ensure_headless(sys.executable, str(uv), versions(), args.repair)
 
 
