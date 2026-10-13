@@ -1,0 +1,81 @@
+    Python: /mnt/lustre/lizongshu/projects/FasterWAM/.venv/bin/python
+    prefix: /mnt/lustre/lizongshu/projects/FasterWAM/.venv
+    base: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/python-base
+    glibc: 2.35
+    PT_INTERP: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/ld-linux-x86-64.so.2
+    mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/ld-linux-x86-64.so.2, /mnt/lustre/lizongshu/depends/glibc-2.35/lib/libc.so.6
+PASS private runtime / ELF / environment
+    child: /mnt/lustre/lizongshu/projects/FasterWAM/.venv/bin/python (glibc 2.35)
+PASS Python and system-shell subprocesses
+PASS multiprocessing spawn
+Doctor finished: 3 passed, 0 failed.
+Native-only package: nvidia-npp-cu12==12.3.3.65 -> /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/native-packages/npp-cu128
+Using CPython 3.10.20 interpreter at: .venv/bin/python
+Resolved 1 package in 1.23s
+Downloading nvidia-npp-cu12 (203.2MiB)
+ Downloaded nvidia-npp-cu12
+Prepared 1 package in 31.70s
+Installed 1 package in 907ms
+ + nvidia-npp-cu12==12.3.3.65
+PASS TorchCodec import: 0.5+cu128
+DIAGNOSTIC installed: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/bin/ffmpeg (returncode=-11)
+DIAGNOSTIC pristine-direct: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/bin/ffmpeg (returncode=127)
+  stderr:
+/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/bin/.fasterwam-native-ffmpeg-8c0417fab25b6b28: error while loading shared libraries: libavdevice.so.61: cannot open shared object file: No such file or directory
+
+PASS native helper repaired (loader-wrapper): /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/bin/ffmpeg
+DIAGNOSTIC installed: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/bin/ffprobe (returncode=-11)
+DIAGNOSTIC pristine-direct: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/bin/ffprobe (returncode=127)
+  stderr:
+/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/bin/.fasterwam-native-ffprobe-51deb09f837f55f4: error while loading shared libraries: libavdevice.so.61: cannot open shared object file: No such file or directory
+
+PASS native helper repaired (loader-wrapper): /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/bin/ffprobe
+DIAGNOSTIC installed: /mnt/lustre/lizongshu/projects/FasterWAM/.venv/bin/ninja (returncode=-11)
+Native-only package: ninja==1.13.0 -> /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/native-pristine-hg6tor_v/ninja
+Using CPython 3.10.20 interpreter at: .venv/bin/python
+Resolved 1 package in 1.51s
+Prepared 1 package in 409ms
+Installed 1 package in 41ms
+ + ninja==1.13.0
+PASS native helper repaired (direct): /mnt/lustre/lizongshu/projects/FasterWAM/.venv/bin/ninja
+DIAGNOSTIC installed: /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/triton/backends/nvidia/bin/ptxas (returncode=-11)
+Native-only package: triton==3.3.1 -> /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/native-pristine-hg6tor_v/triton
+Using CPython 3.10.20 interpreter at: .venv/bin/python
+Resolved 1 package in 1.20s
+Downloading triton (148.4MiB)
+ Downloaded triton
+Prepared 1 package in 22.56s
+Installed 1 package in 2.00s
+ + triton==3.3.1
+PASS native helper repaired (direct): /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/triton/backends/nvidia/bin/ptxas
+Core repair completed; pyproject.toml and uv.lock are unchanged.
+SKIP actual video decoding: supply --video /path/to/video.mp4 to test it.
+    Python: /mnt/lustre/lizongshu/projects/FasterWAM/.venv/bin/python
+    prefix: /mnt/lustre/lizongshu/projects/FasterWAM/.venv
+    base: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/python-base
+    glibc: 2.35
+    PT_INTERP: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/ld-linux-x86-64.so.2
+    mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/ld-linux-x86-64.so.2, /mnt/lustre/lizongshu/depends/glibc-2.35/lib/libc.so.6
+PASS private runtime / ELF / environment
+    child: /mnt/lustre/lizongshu/projects/FasterWAM/.venv/bin/python (glibc 2.35)
+PASS Python and system-shell subprocesses
+PASS multiprocessing spawn
+    torch==2.7.1+cu128
+    torchvision==0.22.1+cu128
+    pyarrow==23.0.0
+    av==16.0.1
+    transformers==4.49.0
+    datasets==3.6.0
+    accelerate==1.12.0
+    h5py==3.14.0
+    torchcodec==0.5+cu128
+    deepspeed==0.18.5
+PASS pinned packages / native imports
+    /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/bin/ffmpeg: ffmpeg version 7.1.1 Copyright (c) 2000-2025 the FFmpeg developers
+    /mnt/lustre/lizongshu/projects/FasterWAM/.venv/bin/ninja: 1.13.0.git.kitware.jobserver-pipe-1
+    /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/triton/backends/nvidia/bin/ptxas: ptxas: NVIDIA (R) Ptx optimizing assembler
+PASS native helper execution
+    CUDA 12.8: NVIDIA A800-SXM4-80GB
+PASS PyTorch execution
+PASS PyTorch shared-memory manager
+Doctor finished: 7 passed, 0 failed.
