@@ -1,0 +1,220 @@
+diff --git a/scripts/setup/centos7/build_libero_glvnd.py b/scripts/setup/centos7/build_libero_glvnd.py
+--- a/scripts/setup/centos7/build_libero_glvnd.py
++++ b/scripts/setup/centos7/build_libero_glvnd.py
+@@ -2,8 +2,9 @@
+ """Build a private, matching GLVND EGL/OpenGL/GLdispatch bundle for LIBERO.
+ 
+ No system packages, driver installation, or venv packages are changed. Downloads
+-are pinned by SHA256. The existing compiler, C headers, nm, and patched ninja
+-must work on this host. Call build_glvnd from repair_libero_loader.py.
++are pinned by SHA256. The existing compiler, C headers and nm must work on
++this host. Ninja is bootstrapped privately, independently of the LIBERO lock.
++Call build_glvnd from repair_libero_loader.py.
+ """
+ from __future__ import annotations
+ 
+@@ -11,6 +12,7 @@
+ import json
+ import os
+ from pathlib import Path, PurePosixPath
++import resource
+ import shlex
+ import shutil
+ import subprocess
+@@ -26,6 +28,11 @@
+              '47b9353c331318a13eb050887eacfd61eb075746285f9baf7ef7de6ae235/'
+              'meson-1.5.2-py3-none-any.whl')
+ MESON_SHA256 = '77706e2368a00d789c097632ccf4fc39251fba56d03e1e1b262559a3c7a08f5b'
++NINJA_FILENAME = 'ninja-1.11.1.4-py3-none-manylinux_2_12_x86_64.manylinux2010_x86_64.whl'
++NINJA_URL = ('https://files.pythonhosted.org/packages/eb/7a/'
++             '455d2877fe6cf99886849c7f9755d897df32eaf3a0fba47b56e615f880f7/' + NINJA_FILENAME)
++NINJA_SHA256 = '096487995473320de7f65d622c3f1d16c3ad174797602218ca8c967f51ec38a0'
++NINJA_MEMBER = 'ninja-1.11.1.4.data/scripts/ninja'
+ LIBRARIES = ('libEGL.so.1', 'libOpenGL.so.0', 'libGLdispatch.so.0')
+ OPTIONS = ('-Dx11=disabled', '-Dglx=disabled', '-Degl=true', '-Dgles1=false',
+            '-Dgles2=false', '-Dheaders=false', '-Dhgl=false')
+@@ -119,6 +126,73 @@
+     subprocess.run(command, check=True, env=env, cwd=cwd, timeout=timeout)
+ 
+ 
++def _no_core() -> None:
++    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
++
++
++def _ninja_smoke(command: list[str], env: dict[str, str], work: Path) -> tuple[bool, str]:
++    """Check real command execution, including the system-shell child."""
++    output = work / 'result.txt'
++    if output.exists():
++        output.unlink()
++    (work / 'build.ninja').write_text(
++        "rule check\n"
++        "  command = /bin/sh -c 'test -z \"$${LD_LIBRARY_PATH+x}\" && "
++        "test -z \"$${LD_PRELOAD+x}\" && printf ready > result.txt'\n"
++        "build result.txt: check\n")
++    try:
++        version = subprocess.run(command + ['--version'], env=env, cwd=work,
++                                 text=True, capture_output=True, timeout=30, preexec_fn=_no_core)
++        if version.returncode != 0 or not version.stdout.strip().startswith('1.11.1'):
++            return False, f'version returncode={version.returncode}: {version.stdout} {version.stderr}'
++        build = subprocess.run(command + ['-f', 'build.ninja'], env=env, cwd=work,
++                               text=True, capture_output=True, timeout=30, preexec_fn=_no_core)
++        if build.returncode != 0 or not output.is_file() or output.read_text() != 'ready':
++            return False, f'build returncode={build.returncode}: {build.stdout} {build.stderr}'
++        return True, version.stdout.strip()
++    except (OSError, subprocess.TimeoutExpired) as error:
++        return False, str(error)
++
++
++def _prepare_ninja(state: dict, cache: Path, env: dict[str, str], local=None) -> Path:
++    # The LIBERO lock has no Ninja dependency. Keep this build tool outside the
++    # venv so uv sync cannot remove it, and avoid mutating any installed helper.
++    wheel_path = _artifact(NINJA_URL, NINJA_SHA256, cache, NINJA_FILENAME, local)
++    directory = Path(tempfile.mkdtemp(prefix='ninja-', dir=cache))
++    payload = directory / 'ninja.bin'
++    with zipfile.ZipFile(wheel_path) as wheel:
++        data = wheel.read(NINJA_MEMBER)
++    if (data[:6] != b'\x7fELF\x02\x01' or data[16:20] != b'\x02\x00\x3e\x00'):
++        raise RuntimeError('Pinned Ninja wheel did not contain the expected x86_64 executable.')
++    with payload.open('xb') as stream:
++        stream.write(data)
++    payload.chmod(0o755)
++    work = directory / 'smoke'
++    work.mkdir()
++    command = [str(payload)]
++    ready, detail = _ninja_smoke(command, env, work)
++    mode = 'direct'
++    if not ready:
++        print('DIAGNOSTIC private Ninja direct: ' + detail, flush=True)
++        # Keep the original ELF intact: some native helpers are sensitive to
++        # patchelf layout changes. This loader flag does not leak into children.
++        paths = [str(Path(state['loader']).parent), *state.get('rpath', [])]
++        command = [state['loader'], '--library-path', ':'.join(dict.fromkeys(paths)), str(payload)]
++        ready, detail = _ninja_smoke(command, env, work)
++        mode = 'private-loader'
++    if not ready:
++        raise RuntimeError('Private Ninja could not execute a shell build: ' + detail)
++    launcher = directory / 'ninja'
++    launcher.write_text('#!/bin/sh\nunset LD_LIBRARY_PATH LD_PRELOAD\nexec '
++                        + shlex.join(command) + ' "$@"\n')
++    launcher.chmod(0o755)
++    ready, detail = _ninja_smoke([str(launcher)], env, work)
++    if not ready:
++        raise RuntimeError('Private Ninja launcher failed: ' + detail)
++    print(f'PASS private Ninja ({mode}): {detail}; {launcher}', flush=True)
++    return launcher
++
++
+ def _probe(libdir: Path, env: dict[str, str]) -> None:
+     env = env.copy()
+     # Test the frontend itself. Host ICDs, or an earlier repair's ICD, must
+@@ -165,7 +239,8 @@
+ 
+ 
+ def build_glvnd(state: dict, source_archive: str | Path | None = None,
+-                *, meson_wheel: str | Path | None = None) -> Path:
++                *, meson_wheel: str | Path | None = None,
++                ninja_wheel: str | Path | None = None) -> Path:
+     """Return an owned libdir with matching libEGL/OpenGL/GLdispatch, reusing it safely."""
+     if state.get('profile') != 'libero':
+         raise RuntimeError('Private GLVND builder is scoped to the LIBERO runtime.')
+@@ -182,10 +257,6 @@
+     existing = _reusable(manifest, base, env)
+     if existing:
+         return existing
+-    ninja = Path(state['venv']) / 'bin/ninja'
+-    if not ninja.is_file() or not os.access(ninja, os.X_OK):
+-        raise RuntimeError(f'Existing patched ninja executable is required: {ninja}')
+-    _run([str(ninja), '--version'], env=env, timeout=30)
+     compiler = shlex.split(env.get('CC', 'cc'))
+     if not compiler or not shutil.which(compiler[0], path=env.get('PATH')):
+         raise RuntimeError('C compiler not found; check FASTERWAM_GCC_ROOT and the runtime launcher.')
+@@ -195,6 +266,7 @@
+     jobs = int(env.get('MAX_JOBS', '2'))
+     if jobs < 1:
+         raise RuntimeError('MAX_JOBS must be a positive integer.')
++    ninja = _prepare_ninja(state, cache, env, local=ninja_wheel)
+     source_tar = _artifact(SOURCE_URL, SOURCE_SHA256, cache, 'libglvnd-v1.7.0.tar.gz', source_archive)
+     meson_archive = _artifact(MESON_URL, MESON_SHA256, cache, 'meson-1.5.2-py3-none-any.whl', meson_wheel)
+     work = Path(tempfile.mkdtemp(prefix='work-', dir=cache))
+@@ -231,7 +303,8 @@
+     final_libdir = prefix / 'lib'
+     _probe(final_libdir, env)
+     record = {'source_url': SOURCE_URL, 'source_sha256': SOURCE_SHA256,
+-              'meson_sha256': MESON_SHA256, 'prefix': str(prefix), 'options': list(OPTIONS),
++              'meson_sha256': MESON_SHA256, 'ninja_sha256': NINJA_SHA256,
++              'prefix': str(prefix), 'options': list(OPTIONS),
+               'compiler': compiler, 'libraries': hashes}
+     fd, temporary = tempfile.mkstemp(prefix='build.json.new-', dir=base)
+     try:
+diff --git a/scripts/setup/centos7/repair_libero_loader.py b/scripts/setup/centos7/repair_libero_loader.py
+--- a/scripts/setup/centos7/repair_libero_loader.py
++++ b/scripts/setup/centos7/repair_libero_loader.py
+@@ -228,11 +228,12 @@
+     parser.add_argument('--build-glvnd', action='store_true', help='Download and build pinned GLVND privately (requires --apply)')
+     parser.add_argument('--glvnd-source', type=Path, help='Verified local v1.7.0 source archive, for --build-glvnd without a GitHub download')
+     parser.add_argument('--meson-wheel', type=Path, help='Verified local Meson 1.5.2 wheel for an offline private build')
++    parser.add_argument('--ninja-wheel', type=Path, help='Verified local Ninja 1.11.1.4 Linux x86_64 wheel for an offline private build')
+     args = parser.parse_args()
+     if args.build_glvnd and (not args.apply or args.glvnd_dir):
+         parser.error('--build-glvnd requires --apply and cannot be combined with --glvnd-dir')
+-    if (args.glvnd_source or args.meson_wheel) and not args.build_glvnd:
+-        parser.error('--glvnd-source/--meson-wheel requires --build-glvnd')
++    if (args.glvnd_source or args.meson_wheel or args.ninja_wheel) and not args.build_glvnd:
++        parser.error('--glvnd-source/--meson-wheel/--ninja-wheel requires --build-glvnd')
+     root = args.root.resolve()
+     state_dir = root / '.runtime/centos7/libero'
+     state = json.loads((state_dir / 'state.json').read_text())
+@@ -300,7 +301,8 @@
+         build_spec = importlib.util.spec_from_file_location('fasterwam_build_glvnd', helper.with_name('build_libero_glvnd.py'))
+         builder = importlib.util.module_from_spec(build_spec)
+         build_spec.loader.exec_module(builder)
+-        glvnd_dir = builder.build_glvnd(state, source_archive=args.glvnd_source, meson_wheel=args.meson_wheel)
++        glvnd_dir = builder.build_glvnd(state, source_archive=args.glvnd_source,
++                                      meson_wheel=args.meson_wheel, ninja_wheel=args.ninja_wheel)
+     try:
+         plan = module.plan_graphics(state, extra_dirs, glvnd_dir=glvnd_dir)
+     except module.GraphicsError as error:
+diff --git a/scripts/setup/centos7/LOADER.zh-CN.md b/scripts/setup/centos7/LOADER.zh-CN.md
+--- a/scripts/setup/centos7/LOADER.zh-CN.md
++++ b/scripts/setup/centos7/LOADER.zh-CN.md
+@@ -16,9 +16,16 @@
+ ## 应用
+ 
+ 从 repo 根目录执行。`--build-glvnd` 下载固定版本的官方 libglvnd v1.7.0
+-源码和 Meson 1.5.2 的纯 Python wheel，验证 SHA256，在 LIBERO 私有目录构建。
+-不向虚拟环境安装 Meson；不下载/安装 NVIDIA 驱动。需要已有 C 编译器、系统
+-C 开发头文件和环境内已修补的 ninja。构建禁用 X11/GLX，不需要 X11 开发包。
++源码、Meson 1.5.2 的纯 Python wheel 和 Ninja 1.11.1.4 的 Linux x86_64 wheel，
++验证 SHA256，在 LIBERO 私有目录构建。不向虚拟环境安装 Meson/Ninja；
++不下载/安装 NVIDIA 驱动。需要已有 C 编译器、系统 C 开发头文件及 nm。
++构建禁用 X11/GLX，不需要 X11 开发包。
++
++LIBERO 的依赖锁不包含 Ninja，因此不要求 `.venvs/libero/bin/ninja` 存在。
++脚本从已验证的 wheel 中提取原始 Ninja，放在
++`.runtime/centos7/libero/glvnd-build/ninja-*/`。此 wheel 的平台下限为 glibc 2.12；
++先检查直接执行，失败时尝试显式私有 loader，再验证其 shell 子进程构建。
++不对 Ninja 原始 ELF 执行 patchelf，也不向子进程导出 `LD_LIBRARY_PATH`。
+ 
+ ```bash
+ (
+@@ -50,14 +57,18 @@
+   --apply --build-glvnd --graphics-dir /actual/host/nvidia/lib64
+ ```
+ 
+-若无法联网，先将下列两个固定文件传至服务器，再添加
+-`--glvnd-source /path/v1.7.0.tar.gz --meson-wheel /path/meson-1.5.2-py3-none-any.whl`。
++若无法联网，先将下列三个固定文件传至服务器，再添加
++`--glvnd-source /path/v1.7.0.tar.gz --meson-wheel /path/meson-1.5.2-py3-none-any.whl`
++以及 `--ninja-wheel /path/ninja-1.11.1.4-py3-none-manylinux_2_12_x86_64.manylinux2010_x86_64.whl`。
+ 它们只与 `--build-glvnd` 一起使用，SHA256 不匹配会停止：
+ 
+ - 源码：<https://codeload.github.com/NVIDIA/libglvnd/tar.gz/refs/tags/v1.7.0>
+   SHA256 `073e7292788d4d3eeb45ea6c7bdcce9bfdb3b3eef8d7dbd47f2f30dce046ef98`。
+ - Meson：<https://pypi.org/project/meson/1.5.2/#files>
+   wheel SHA256 `77706e2368a00d789c097632ccf4fc39251fba56d03e1e1b262559a3c7a08f5b`。
++- Ninja：<https://pypi.org/project/ninja/1.11.1.4/#files>
++  选择 Linux x86_64 manylinux_2_12 wheel，SHA256
++  `096487995473320de7f65d622c3f1d16c3ad174797602218ca8c967f51ec38a0`。
+ 
+ ## 安全重跑与检查
+ 

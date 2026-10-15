@@ -1,0 +1,76 @@
+DIAGNOSTIC OpenCV before repair:
+Traceback (most recent call last):
+  File "<string>", line 4, in <module>
+  File "/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/cv2/__init__.py", line 181, in <module>
+    bootstrap()
+  File "/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/cv2/__init__.py", line 153, in bootstrap
+    native_module = importlib.import_module("cv2")
+  File "/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/python-base/lib/python3.10/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+ImportError: libGL.so.1: cannot open shared object file: Permission denied
+Using Python 3.10.20 environment at: .venvs/libero-plus
+Uninstalled 2 packages in 221ms
+ - opencv-python==4.11.0.86
+ - opencv-python-headless==4.11.0.86
+Using Python 3.10.20 environment at: .venvs/libero-plus
+Resolved 1 package in 285ms
+Installed 1 package in 3.07s
+ + opencv-python-headless==4.11.0.86
+PASS OpenCV: opencv-python-headless==4.11.0.86, GUI=NONE, resize OK
+    cv2: /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/cv2/__init__.py
+BUILD /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/bin/python -I -B -u -c 'import ctypes, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+ctypes.CDLL(str(p / '"'"'libGLdispatch.so.0'"'"'), mode=ctypes.RTLD_GLOBAL)
+egl = ctypes.CDLL(str(p / '"'"'libEGL.so.1'"'"'))
+ctypes.CDLL(str(p / '"'"'libOpenGL.so.0'"'"'))
+egl.eglQueryString.argtypes = (ctypes.c_void_p, ctypes.c_int)
+egl.eglQueryString.restype = ctypes.c_char_p
+version = egl.eglQueryString(None, 0x3054)
+if version != b'"'"'1.5 libglvnd'"'"':
+    raise RuntimeError('"'"'Unexpected private EGL version: %r'"'"' % (version,))
+egl.eglGetProcAddress.argtypes = (ctypes.c_char_p,)
+egl.eglGetProcAddress.restype = ctypes.c_void_p
+if not egl.eglGetProcAddress(b'"'"'eglQueryDevicesEXT'"'"'):
+    raise RuntimeError('"'"'Private GLVND has no eglQueryDevicesEXT dispatch address'"'"')
+print('"'"'PASS private GLVND build:'"'"', version.decode(), flush=True)
+' /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero/private-glvnd/v1.7.0-20yjbupl/lib
+PASS private GLVND build: 1.5 libglvnd
+REUSE private GLVND: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero/private-glvnd/v1.7.0-20yjbupl/lib
+CHECK private librt is loadable
+/mnt/lustre/lizongshu/depends/glibc-2.35/lib/librt.so.1
+PASS private librt is loadable
+MuJoCo shared objects: 15
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_callbacks.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_constants.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_enums.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_errors.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_functions.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_render.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_rollout.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_simulate.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_specs.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_structs.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/libmujoco.so.3.3.2
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/plugin/libactuator.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/plugin/libelasticity.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/plugin/libsdf.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/plugin/libsensor.so
+CHECK fresh MuJoCo import without graphics
+mujoco 3.3.2
+PASS fresh MuJoCo import without graphics
+CHECK normal Python XML and zlib before graphics build
+Expat: expat_2.8.1 ; pyexpat: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/python-base/lib/python3.10/lib-dynload/pyexpat.cpython-310-x86_64-linux-gnu.so
+zlib: 1.3.1 ; XML parsing and compression OK
+Python support mapped: /mnt/lustre/lizongshu/depends/anaconda3/envs/lerobot310/lib/libexpat.so.1.12.1
+Python support mapped: /mnt/lustre/lizongshu/depends/anaconda3/envs/lerobot310/lib/libz.so.1.3.1
+PASS normal Python XML and zlib before graphics build
+GRAPHICS NOT READY: Required host EGL libraries were not found; no files were changed.
+  FOUND libEGL.so.1 -> /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero/private-glvnd/v1.7.0-20yjbupl/lib/libEGL.so.1.1.0
+  FOUND libGLdispatch.so.0 -> /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero/private-glvnd/v1.7.0-20yjbupl/lib/libGLdispatch.so.0.0.0
+  FOUND libOpenGL.so.0 -> /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero/private-glvnd/v1.7.0-20yjbupl/lib/libOpenGL.so.0.0.0
+  MISSING libEGL_nvidia.so.0
+  Running NVIDIA driver: 525.85.12
+  GLVND dispatch directory: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero/private-glvnd/v1.7.0-20yjbupl/lib
+Running NVIDIA driver: 525.85.12
+GLVND dispatch directory: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero/private-glvnd/v1.7.0-20yjbupl/lib
+No system libraries or permissions were changed. For missing GLVND, use --apply --build-glvnd or --glvnd-dir /path/to/coherent/glvnd/lib. For missing NVIDIA companions, supply an existing matching driver directory with --graphics-dir.

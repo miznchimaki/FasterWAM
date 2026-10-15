@@ -1,0 +1,846 @@
+diff --git a/scripts/setup/centos7/README.zh-CN.md b/scripts/setup/centos7/README.zh-CN.md
+--- a/scripts/setup/centos7/README.zh-CN.md
++++ b/scripts/setup/centos7/README.zh-CN.md
+@@ -1,4 +1,8 @@
+ # FasterWAM：CentOS 7 + 私有 glibc + uv
++
++PyArrow 独立导入报 `librt.so.1: ... Permission denied` 时，参见
++[PYARROW.zh-CN.md](PYARROW.zh-CN.md)。三个已安装环境可使用
++`bash scripts/setup/repair_centos7_pyarrow.sh` 修复，无需重新安装。
+ 
+ 适用于 `miznchimaki/FasterWAM`，核对的仓库提交为
+ `83667817df0d4f823f39d90700e61ea2f432ac45`。新增适配脚本；原仓库源码、
+diff --git a/scripts/setup/centos7/PYARROW.zh-CN.md b/scripts/setup/centos7/PYARROW.zh-CN.md
+new file mode 100644
+--- /dev/null
++++ b/scripts/setup/centos7/PYARROW.zh-CN.md
+@@ -0,0 +1,85 @@
++# CentOS 7：PyArrow 独立导入与 librt 搜索路径修复
++
++适用于当前三个环境的 Python 3.10 / pyarrow==23.0.0：core、libero、libero-plus。
++无需重新安装环境、下载模型数据、重建 EGL 或占用 GPU。
++
++## 原因与边界
++
++官方 cp310 manylinux_2_28_x86_64 PyArrow 23.0.0 wheel 中的 37 个共享库
++使用 `DT_RUNPATH=$ORIGIN`；其中多个库依赖 `librt.so.1`。
++glibc 加载器处理带 RUNPATH 的请求库时不会按无 RUNPATH 的方式继承
++主 Python 的 RPATH。因此只修补 Python ELF，不保证 PyArrow 能找到私有 librt。
++
++此前 doctor 在同一进程中先 import torch，再 import pyarrow；前者可能提前加载
++librt，从而掩盖后者独立导入的问题。新的 doctor 会先启动独立子进程验证 PyArrow，
++不改变原有检查项数量。`Permission denied` 本身不能说明被拒绝的是哪条候选路径；
++修复前必须在另一子进程中用绝对路径验证私有 librt。该步骤失败则不改 PyArrow。
++
++参考：glibc 2.35 `elf/dl-load.c` 的 `_dl_map_object` RUNPATH/RPATH 分支：
++<https://github.com/bminor/glibc/blob/release/2.35/master/elf/dl-load.c>。
++
++## 已安装环境的修复
++
++应用包含本文件的补丁后，在 FasterWAM 根目录执行：
++
++```bash
++mkdir -p centos7_env_adaptation/logs/pyarrow
++(
++  set -o pipefail
++  bash scripts/setup/repair_centos7_pyarrow.sh \
++    2>&1 | tee centos7_env_adaptation/logs/pyarrow/repair-pyarrow.log
++)
++```
++
++不需要先 activate。脚本分别使用各环境自己的 run 启动器，不受当前激活环境影响。
++也可只修复一个环境：
++
++```bash
++bash scripts/setup/repair_centos7_pyarrow.sh libero-plus
++```
++
++每个环境都应看到 `PASS PyArrow repair [profile]` 和 `PASS profile profile`。
++`BEFORE fresh PyArrow (diagnostic): exit=1` 是修复前的原始错误；判断最终是否成功
++应看 AFTER / PASS 和整个命令的退出码。脚本会继续检查其他 profile，任一失败则最终非零退出。
++
++独立验证，仍不占用 GPU：
++
++```bash
++bash scripts/setup/repair_centos7_pyarrow.sh --check
++
++for profile in core libero libero-plus; do
++  .runtime/centos7/"${profile}"/run python -I -c \
++    'import pyarrow; print(pyarrow.__version__); import datasets; print("datasets", datasets.__version__)' \
++    || break
++done
++```
++
++`--check` 在新进程首先 import pyarrow，验证 compute、dataset、IPC 和
++Parquet/Snappy 往返，以及 `/proc/self/maps` 中 libc、librt 等的来源。
++如果仍失败，请保留完整日志；若修复后的 probe 失败，还会生成
++`.runtime/centos7/<profile>/pyarrow-loader-debug.log` 供进一步定位。
++
++## 修改范围与重跑
++
++- 每个 profile 只修改其 site-packages/pyarrow 下的 ELF 共享库；保留包版本和锁文件。
++- RPATH 顺序：私有 glibc、原有 `$ORIGIN` 路径、该 profile 的 native-libs、其余原有路径。
++  不额外加入 torch/NVIDIA/FFmpeg/旧 Conda 的整组路径。
++- 对临时副本运行 patchelf，确认 DT_NEEDED 不变、DT_RUNPATH 消失，再原子替换。
++  不原地改写 uv 缓存硬链接，不改共享库 PT_INTERP，不修改系统文件或系统权限。
++- 原始 ELF 按 SHA256 备份到 `.runtime/centos7/<profile>/pyarrow-repair-backups/`，
++  进度记录到 `pyarrow-repair.json`。第一次每个环境约需额外 145 MiB 备份空间。
++  重跑已修好的文件显示 UNCHANGED；中断后可重新运行。执行期间不要同时 uv/pip 修改同一环境。
++- 正常 `install_centos7.sh` 已接入此修复；后续通过其他命令重装 PyArrow 后，
++  再运行本修复脚本即可。不需要重新执行全套环境安装。
++- 新启动的 Python 会使用修复后的文件；已有 Python/Jupyter 进程应重启再验证。
++
++## 本地开发验证
++
++```bash
++python scripts/setup/centos7/test_pyarrow_doctor.py
++python scripts/setup/centos7/test_pyarrow_repair.py
++```
++
++ELF 测试需要 gcc 和 patchelf；通过 `PATCHELF=/path/to/patchelf` 指定测试工具。
++它在临时目录编译最小共享库，验证 RUNPATH 继承问题、copy-on-write、幂等性及备份，
++不修改当前运行环境。
+diff --git a/scripts/setup/centos7/doctor.py b/scripts/setup/centos7/doctor.py
+--- a/scripts/setup/centos7/doctor.py
++++ b/scripts/setup/centos7/doctor.py
+@@ -136,6 +136,63 @@
+             process.join(5)
+ 
+ 
++PYARROW_PROBE = r'''
++import sys
++if any(name == "torch" or name.startswith("torch.") for name in sys.modules):
++    raise RuntimeError("Python startup imported torch; cannot check PyArrow independently")
++import pyarrow as pa
++import pyarrow.compute as pc
++import pyarrow.dataset as ds
++import pyarrow.ipc as ipc
++import pyarrow.parquet as pq
++if pa.__version__ != sys.argv[1]:
++    raise RuntimeError(f"pyarrow: expected {sys.argv[1]}, found {pa.__version__}")
++table = pa.table({"number": pa.array([1, None, 3], type=pa.int64()),
++                  "text": ["first", "second", None]})
++if pc.sum(table["number"]).as_py() != 4:
++    raise RuntimeError("PyArrow compute returned an unexpected sum")
++if not ds.dataset(table).to_table().equals(table):
++    raise RuntimeError("PyArrow dataset scan changed the table")
++sink = pa.BufferOutputStream()
++with ipc.new_stream(sink, table.schema) as writer:
++    writer.write_table(table)
++if not ipc.open_stream(sink.getvalue()).read_all().equals(table):
++    raise RuntimeError("PyArrow IPC roundtrip changed the table")
++sink = pa.BufferOutputStream()
++pq.write_table(table, sink, compression="snappy")
++if not pq.read_table(pa.BufferReader(sink.getvalue())).equals(table):
++    raise RuntimeError("PyArrow Parquet roundtrip changed the table")
++import json
++print("FASTERWAM_PYARROW_PROBE=" + json.dumps({"version": pa.__version__,
++      "prefix": sys.prefix, "executable": sys.executable}))
++'''
++
++
++def pyarrow_check(expected_version="23.0.0"):
++    # torch can load librt before Arrow and hide an incomplete DSO search path.
++    # A fresh process checks the same standalone import used by dataset tools.
++    environment = os.environ.copy()
++    for name in ("LD_LIBRARY_PATH", "LD_PRELOAD", "LD_AUDIT", "LD_DEBUG",
++                 "LD_DEBUG_OUTPUT", "PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP"):
++        environment.pop(name, None)
++    result = subprocess.run(
++        [sys.executable, "-I", "-B", "-u", "-c", PYARROW_PROBE, expected_version],
++        env=environment, capture_output=True, text=True, timeout=120)
++    require(result.returncode == 0,
++            f"fresh Python exited {result.returncode}:\n"
++            f"{(result.stderr + result.stdout).strip()[-4000:]}")
++    marker = "FASTERWAM_PYARROW_PROBE="
++    records = [line[len(marker):] for line in result.stdout.splitlines()
++               if line.startswith(marker)]
++    require(len(records) == 1, "Fresh PyArrow probe did not report its result")
++    info = json.loads(records[0])
++    require(info.get("version") == expected_version,
++            f"Fresh PyArrow probe reported an unexpected version: {info}")
++    require(Path(info.get("prefix", "")).resolve() == Path(sys.prefix).resolve(),
++            f"Fresh PyArrow probe used another environment: {info}")
++    print(f"    fresh PyArrow {info['version']} import / IPC / Parquet passed (before torch)")
++
++
+ def package_check(profile):
+     robotwin = profile == "robotwin"
+     versions = {"torch": "2.4.1+cu121" if robotwin else "2.7.1+cu128",
+@@ -152,6 +209,10 @@
+     else:
+         versions.update(sapien="3.0.0b1", mplib="0.2.1")
+     errors = []
++    try:
++        pyarrow_check(versions["pyarrow"])
++    except Exception as error:
++        errors.append(f"fresh pyarrow import / IPC / Parquet: {error}")
+     for module, expected in versions.items():
+         try:
+             actual = importlib.metadata.version(module)
+diff --git a/scripts/setup/centos7/repair_pyarrow.py b/scripts/setup/centos7/repair_pyarrow.py
+new file mode 100644
+--- /dev/null
++++ b/scripts/setup/centos7/repair_pyarrow.py
+@@ -0,0 +1,330 @@
++#!/usr/bin/env python3
++"""Repair PyArrow 23 ELF search paths in one owned CentOS 7 profile.
++
++Run through .runtime/centos7/<profile>/run python. Without --apply this is
++read-only. No package installation, downloads, global LD_* changes or GPU use.
++"""
++from __future__ import annotations
++
++import argparse
++import hashlib
++import importlib.metadata
++import importlib.util
++import json
++import os
++from pathlib import Path
++import shutil
++import struct
++import subprocess
++import sys
++import tempfile
++
++PROFILES = ('core', 'libero', 'libero-plus')
++VERSION = '23.0.0'
++
++
++def clean_env():
++    env = os.environ.copy()
++    for key in ('LD_LIBRARY_PATH', 'LD_PRELOAD', 'LD_AUDIT', 'LD_DEBUG',
++                'LD_DEBUG_OUTPUT', 'PYTHONHOME', 'PYTHONPATH'):
++        env.pop(key, None)
++    env['PYTHONNOUSERSITE'] = '1'
++    return env
++
++
++def digest(path):
++    value = hashlib.sha256()
++    with path.open('rb') as stream:
++        for block in iter(lambda: stream.read(1024 * 1024), b''):
++            value.update(block)
++    return value.hexdigest()
++
++
++def owned_path(path):
++    if path.is_symlink() or path.resolve() != path:
++        raise RuntimeError(f'Refusing symlink at owned path: {path}')
++
++
++def dynamic_tags(path):
++    """Return ELF dynamic tags; reject executables or non-x86_64 objects."""
++    with path.open('rb') as stream:
++        header = stream.read(64)
++        if (len(header) != 64 or header[:6] != b'\x7fELF\x02\x01'
++                or header[16:20] != b'\x03\x00\x3e\x00'):
++            raise RuntimeError(f'Expected x86_64 ELF shared object: {path}')
++        offset = struct.unpack_from('<Q', header, 32)[0]
++        size, count = struct.unpack_from('<HH', header, 54)
++        if size < 56 or count > 4096:
++            raise RuntimeError(f'Invalid ELF program headers: {path}')
++        tags = set()
++        for index in range(count):
++            stream.seek(offset + size * index)
++            entry = stream.read(size)
++            kind = struct.unpack_from('<I', entry)[0]
++            if kind == 3:
++                raise RuntimeError(f'Refusing a PT_INTERP executable: {path}')
++            if kind != 2:
++                continue
++            start = struct.unpack_from('<Q', entry, 8)[0]
++            length = struct.unpack_from('<Q', entry, 32)[0]
++            stream.seek(start)
++            for tag, value in struct.iter_unpack('<qQ', stream.read(length)):
++                if tag == 0:
++                    break
++                tags.add(tag)
++        if not tags:
++            raise RuntimeError(f'Missing ELF dynamic section: {path}')
++        return tags
++
++
++def capture(tool, *args):
++    return subprocess.check_output([tool, *args], env=clean_env(), text=True,
++                                   timeout=60).strip()
++
++
++def desired_rpath(state, old):
++    # PyArrow's sibling libarrow/libparquet must precede broad fallback paths.
++    # Private glibc comes first. Keep original $ORIGIN variants and fallbacks.
++    existing = [part for part in old.split(':') if part]
++    origins = [part for part in existing if '$ORIGIN' in part or '${ORIGIN}' in part]
++    paths = [str(Path(state['loader']).parent)]
++    paths += origins or ['$ORIGIN']
++    # This wheel needs only glibc and the selected C++ runtime outside itself.
++    # Do not pull broad torch/NVIDIA/FFmpeg/Conda directories into its search.
++    paths += [str(Path(state['private']).parent / 'native-libs')]
++    paths += existing
++    return ':'.join(dict.fromkeys(paths))
++
++
++def atomic_json(path, value):
++    owned_path(path)
++    fd, name = tempfile.mkstemp(prefix=path.name + '.new-', dir=path.parent)
++    try:
++        with os.fdopen(fd, 'w') as stream:
++            json.dump(value, stream, indent=2)
++            stream.write('\n')
++        os.replace(name, path)
++    finally:
++        if os.path.exists(name):
++            os.unlink(name)
++
++
++def backup_file(path, directory, sha):
++    backup = directory / (sha + '.elf')
++    owned_path(backup)
++    if backup.exists():
++        if digest(backup) != sha:
++            raise RuntimeError(f'Backup hash mismatch: {backup}')
++        return backup
++    fd, name = tempfile.mkstemp(prefix='backup-', dir=directory)
++    os.close(fd)
++    try:
++        shutil.copy2(path, name)
++        if digest(Path(name)) != sha:
++            raise RuntimeError(f'Source changed while backing up: {path}')
++        os.replace(name, backup)
++    finally:
++        if os.path.exists(name):
++            os.unlink(name)
++    return backup
++
++
++def patch_object(path, state, backups, record, manifest):
++    owned_path(path)
++    tags = dynamic_tags(path)
++    tool = state['patchelf']
++    old = capture(tool, '--print-rpath', str(path))
++    wanted = desired_rpath(state, old)
++    key = str(path.relative_to(Path(state['root'])))
++    before = digest(path)
++    if old == wanted and 15 in tags and 29 not in tags:
++        print(f'UNCHANGED {path}', flush=True)
++        current = record['files'].get(key, {})
++        # A completed replacement whose final journal write was interrupted.
++        if current.get('patched_sha256') == before:
++            current.pop('pending', None)
++        else:
++            record['files'][key] = dict(patched_sha256=before, rpath=wanted,
++                                       already_repaired=True)
++        atomic_json(manifest, record)
++        return
++    backup = backup_file(path, backups, before)
++    needed = capture(tool, '--print-needed', str(path))
++    mode = path.stat().st_mode & 0o777
++    fd, name = tempfile.mkstemp(prefix=path.name + '.new-', dir=path.parent)
++    os.close(fd)
++    temporary = Path(name)
++    try:
++        shutil.copy2(path, temporary)
++        temporary.chmod(mode | 0o200)
++        subprocess.run([tool, '--force-rpath', '--set-rpath', wanted, str(temporary)],
++                       env=clean_env(), check=True, timeout=60)
++        new_tags = dynamic_tags(temporary)
++        if (capture(tool, '--print-rpath', str(temporary)) != wanted
++                or 15 not in new_tags or 29 in new_tags
++                or capture(tool, '--print-needed', str(temporary)) != needed):
++            raise RuntimeError(f'Patched ELF validation failed: {path}')
++        temporary.chmod(mode)
++        patched = digest(temporary)
++        entry = dict(before_sha256=before, backup=str(backup), patched_sha256=patched,
++                     old_rpath=old, rpath=wanted, needed=needed.splitlines(), pending=True)
++        record['files'][key] = entry
++        atomic_json(manifest, record)
++        owned_path(path)
++        if digest(path) != before:
++            raise RuntimeError(f'Source changed during repair; stop concurrent uv/pip: {path}')
++        # Copy + replace breaks uv hard links and keeps already mapped inodes alive.
++        os.replace(temporary, path)
++        entry.pop('pending')
++        atomic_json(manifest, record)
++        print(f'PATCHED {path}', flush=True)
++    finally:
++        if temporary.exists():
++            temporary.unlink()
++
++
++LIBRT_PROBE = r'''
++import ctypes, pathlib, sys
++root = pathlib.Path(sys.argv[1]).resolve()
++path = pathlib.Path(sys.argv[2])
++if not path.resolve().is_relative_to(root):
++    raise RuntimeError('Private librt symlink escapes configured glibc: ' + str(path))
++ctypes.CDLL(str(path))
++paths = {line.split(None, 5)[5].strip() for line in pathlib.Path('/proc/self/maps').read_text().splitlines()
++         if len(line.split(None, 5)) == 6 and line.split(None, 5)[5].startswith('/')}
++if str(path.resolve()) not in {str(pathlib.Path(p).resolve()) for p in paths}:
++    raise RuntimeError('Private librt is absent from process mappings')
++print('PASS absolute private librt:', path.resolve(), flush=True)
++'''
++
++MAPPING_PROBE = r'''
++import pathlib, sys
++root = pathlib.Path(sys.argv[2]).resolve()
++mapped = set()
++for line in pathlib.Path('/proc/self/maps').read_text().splitlines():
++    parts = line.split(None, 5)
++    if len(parts) != 6 or not parts[5].startswith('/'):
++        continue
++    path = pathlib.Path(parts[5].strip()).resolve()
++    if path.name.startswith(('librt.so', 'librt-', 'libc.so', 'libc-', 'ld-linux', 'ld-',
++                             'libpthread.so', 'libpthread-', 'libdl.so', 'libdl-')):
++        mapped.add(path)
++        if not path.is_relative_to(root):
++            raise RuntimeError('glibc component loaded outside private prefix: ' + str(path))
++if not any(p.name.startswith(('librt.so', 'librt-')) for p in mapped):
++    raise RuntimeError('No librt mapping after fresh PyArrow import')
++for path in sorted(mapped):
++    print('mapped:', path, flush=True)
++'''
++
++
++def fresh_probe(code, *args, debug=False):
++    env = clean_env()
++    if debug:
++        env['LD_DEBUG'] = 'libs,files'
++    return subprocess.run([sys.executable, '-I', '-B', '-u', '-c', code, *args],
++                          env=env, capture_output=True, text=True, timeout=180)
++
++
++def show_result(label, result):
++    print(f'{label}: exit={result.returncode}', flush=True)
++    if result.stdout:
++        print(result.stdout.rstrip(), flush=True)
++    if result.stderr:
++        print(result.stderr.rstrip(), flush=True)
++
++
++def load_context(root, profile):
++    directory = root / '.runtime/centos7' / profile
++    state_path = directory / 'state.json'
++    venv = root / ('.venv' if profile == 'core' else '.venvs/' + profile)
++    private = directory / 'python-base'
++    for path in (directory, state_path, venv, private):
++        owned_path(path)
++    state = json.loads(state_path.read_text())
++    expected = dict(root=str(root), profile=profile, venv=str(venv), private=str(private))
++    if any(state.get(key) != value for key, value in expected.items()):
++        raise RuntimeError('Runtime state does not belong to this repository/profile')
++    if Path(sys.prefix) != venv or Path(sys.base_prefix) != private:
++        raise RuntimeError(f'Run with .runtime/centos7/{profile}/run python')
++    if sys.version_info[:2] != (3, 10):
++        raise RuntimeError('This repair requires the installed Python 3.10 environment')
++    glibc = Path(state['glibc']).resolve()
++    loader = Path(state['loader'])
++    if not loader.resolve().is_relative_to(glibc):
++        raise RuntimeError('Loader is outside the configured private glibc')
++    dist = importlib.metadata.distribution('pyarrow')
++    if dist.version != VERSION:
++        raise RuntimeError(f'Expected locked pyarrow=={VERSION}; found {dist.version}')
++    site = venv / 'lib/python3.10/site-packages'
++    package = site / 'pyarrow'
++    owned_path(package)
++    if Path(dist.locate_file('pyarrow')).absolute() != package:
++        raise RuntimeError('PyArrow metadata points outside the selected virtual environment')
++    objects = sorted(path for path in package.rglob('*')
++                     if (path.name.endswith('.so') or '.so.' in path.name) and path.is_file())
++    if not objects:
++        raise RuntimeError('No installed PyArrow shared objects found')
++    for path in objects:
++        owned_path(path)
++        dynamic_tags(path)
++    if not Path(state['patchelf']).is_file():
++        raise RuntimeError('Saved patchelf executable is missing: ' + state['patchelf'])
++    return state, directory, objects
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--profile', choices=PROFILES, required=True)
++    parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[3])
++    parser.add_argument('--apply', action='store_true', help='Patch owned PyArrow ELF copies')
++    args = parser.parse_args()
++    root = args.root.resolve()
++    state, directory, objects = load_context(root, args.profile)
++    print(f'Profile: {args.profile}; pyarrow=={VERSION}; {len(objects)} shared objects', flush=True)
++    # Only stdlib imports in this parent: torch cannot mask the baseline failure.
++    spec = importlib.util.spec_from_file_location('fasterwam_doctor', Path(__file__).with_name('doctor.py'))
++    doctor = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(doctor)
++    code = doctor.PYARROW_PROBE + '\n' + MAPPING_PROBE
++    before = fresh_probe(code, VERSION, state['glibc'])
++    show_result('BEFORE fresh PyArrow (diagnostic)', before)
++    if not args.apply:
++        print('Read-only check. Use --apply to repair ELF search paths.', flush=True)
++        return 0 if before.returncode == 0 else 1
++    librt = Path(state['loader']).parent / 'librt.so.1'
++    result = fresh_probe(LIBRT_PROBE, state['glibc'], str(librt))
++    show_result('CHECK private librt before any ELF changes', result)
++    if result.returncode:
++        raise RuntimeError('Private librt itself cannot be loaded. No PyArrow ELF was changed; '
++                           'inspect the exact path/permissions/dependencies above.')
++    backups = directory / 'pyarrow-repair-backups'
++    manifest = directory / 'pyarrow-repair.json'
++    for path in (backups, manifest, directory / 'pyarrow-loader-debug.log'):
++        owned_path(path)
++    backups.mkdir(exist_ok=True)
++    previous = json.loads(manifest.read_text()) if manifest.exists() else {}
++    if previous and (previous.get('root') != str(root) or previous.get('profile') != args.profile):
++        raise RuntimeError('PyArrow repair journal belongs to a different profile')
++    record = dict(previous)
++    record.update(root=str(root), profile=args.profile, version=VERSION, imports_passed=False)
++    record.setdefault('files', {})
++    atomic_json(manifest, record)
++    for path in objects:
++        patch_object(path, state, backups, record, manifest)
++    result = fresh_probe(code, VERSION, state['glibc'])
++    show_result('AFTER fresh PyArrow', result)
++    if result.returncode:
++        debug = fresh_probe(code, VERSION, state['glibc'], debug=True)
++        debug_path = directory / 'pyarrow-loader-debug.log'
++        debug_path.write_text(debug.stdout + '\n' + debug.stderr)
++        raise RuntimeError(f'Fresh import/roundtrip still fails; loader trace: {debug_path}')
++    record['imports_passed'] = True
++    atomic_json(manifest, record)
++    print(f'PASS PyArrow repair [{args.profile}]', flush=True)
++    print(f'Backup directory: {backups}\nRepair journal: {manifest}', flush=True)
++    return 0
++
++
++if __name__ == '__main__':
++    sys.exit(main())
+diff --git a/scripts/setup/centos7/test_pyarrow_doctor.py b/scripts/setup/centos7/test_pyarrow_doctor.py
+new file mode 100644
+--- /dev/null
++++ b/scripts/setup/centos7/test_pyarrow_doctor.py
+@@ -0,0 +1,104 @@
++#!/usr/bin/env python3
++"""CPU-only regression tests for standalone PyArrow validation in doctor.py."""
++
++import contextlib
++import importlib.util
++import io
++import json
++import os
++from pathlib import Path
++import subprocess
++import sys
++import unittest
++from unittest import mock
++
++
++SPEC = importlib.util.spec_from_file_location("centos7_doctor", Path(__file__).with_name("doctor.py"))
++doctor = importlib.util.module_from_spec(SPEC)
++SPEC.loader.exec_module(doctor)
++
++
++class PyArrowDoctorTests(unittest.TestCase):
++    def result(self, **changes):
++        info = {"version": "23.0.0", "prefix": sys.prefix, "executable": sys.executable}
++        info.update(changes)
++        return subprocess.CompletedProcess([], 0, "FASTERWAM_PYARROW_PROBE=" + json.dumps(info) + "\n", "")
++
++    def test_fresh_interpreter_and_clean_loader_environment(self):
++        polluted = {name: "/unwanted" for name in (
++            "LD_LIBRARY_PATH", "LD_PRELOAD", "LD_AUDIT", "LD_DEBUG", "LD_DEBUG_OUTPUT",
++            "PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP")}
++        polluted["FASTERWAM_GLIBC_ROOT"] = "/private/glibc"
++        with mock.patch.dict(os.environ, polluted), \
++                mock.patch.object(doctor.subprocess, "run", return_value=self.result()) as run, \
++                contextlib.redirect_stdout(io.StringIO()):
++            doctor.pyarrow_check()
++        arguments, options = run.call_args
++        self.assertEqual(arguments[0], [sys.executable, "-I", "-B", "-u", "-c", doctor.PYARROW_PROBE, "23.0.0"])
++        self.assertEqual(options["timeout"], 120)
++        self.assertEqual(options["env"]["FASTERWAM_GLIBC_ROOT"], "/private/glibc")
++        self.assertTrue(all(name not in options["env"] for name in polluted
++                            if name != "FASTERWAM_GLIBC_ROOT"))
++
++    def test_native_loader_failure_is_preserved(self):
++        failed = subprocess.CompletedProcess([], 1, "", "ImportError: librt.so.1: Permission denied\n")
++        with mock.patch.object(doctor.subprocess, "run", return_value=failed):
++            with self.assertRaisesRegex(RuntimeError, "librt.so.1: Permission denied"):
++                doctor.pyarrow_check()
++
++    def test_signal_failure_is_preserved(self):
++        failed = subprocess.CompletedProcess([], -11, "", "")
++        with mock.patch.object(doctor.subprocess, "run", return_value=failed):
++            with self.assertRaisesRegex(RuntimeError, "exited -11"):
++                doctor.pyarrow_check()
++
++    def test_incomplete_or_wrong_environment_results_are_rejected(self):
++        results = (
++            subprocess.CompletedProcess([], 0, "", ""),
++            self.result(prefix="/some/other/environment"),
++            self.result(version="22.0.0"),
++        )
++        for result in results:
++            with self.subTest(stdout=result.stdout), \
++                    mock.patch.object(doctor.subprocess, "run", return_value=result):
++                with self.assertRaises(RuntimeError):
++                    doctor.pyarrow_check()
++
++    def test_probe_failure_cannot_be_hidden_by_successful_later_imports(self):
++        events = []
++        expected = {"torch": "2.7.1+cu128", "torchvision": "0.22.1+cu128",
++                    "pyarrow": "23.0.0", "av": "16.0.1", "transformers": "4.49.0",
++                    "datasets": "3.6.0", "accelerate": "1.12.0", "h5py": "3.14.0",
++                    "torchcodec": "0.5+cu128", "deepspeed": "0.18.5"}
++
++        def probe(version):
++            events.append("fresh-pyarrow")
++            self.assertEqual(version, "23.0.0")
++            raise RuntimeError("librt.so.1 cannot be loaded independently")
++
++        def imported(name):
++            events.append(name)
++
++        with mock.patch.object(doctor, "pyarrow_check", side_effect=probe), \
++                mock.patch.object(doctor.importlib.metadata, "version", side_effect=expected.__getitem__), \
++                mock.patch.object(doctor.importlib, "import_module", side_effect=imported), \
++                contextlib.redirect_stdout(io.StringIO()):
++            with self.assertRaisesRegex(RuntimeError, "fresh pyarrow.*librt.so.1"):
++                doctor.package_check("core")
++        self.assertEqual(events[0], "fresh-pyarrow")
++        self.assertEqual(events[1], "torch")
++        self.assertIn("pyarrow", events[2:])
++
++    def test_real_subprocess_rejects_startup_imported_torch(self):
++        # No PyArrow or CUDA installation is needed to exercise this guard.
++        result = subprocess.run(
++            [sys.executable, "-I", "-B", "-c",
++             "import sys, types\nsys.modules['torch'] = types.ModuleType('torch')\n" + doctor.PYARROW_PROBE,
++             "23.0.0"], capture_output=True, text=True, timeout=30)
++        self.assertNotEqual(result.returncode, 0)
++        self.assertIn("Python startup imported torch", result.stderr)
++        self.assertNotIn("FASTERWAM_PYARROW_PROBE=", result.stdout)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/scripts/setup/centos7/test_pyarrow_repair.py b/scripts/setup/centos7/test_pyarrow_repair.py
+new file mode 100644
+--- /dev/null
++++ b/scripts/setup/centos7/test_pyarrow_repair.py
+@@ -0,0 +1,155 @@
++#!/usr/bin/env python3
++"""Real-ELF regression tests for PyArrow repair; no PyArrow/GPU is required."""
++
++import contextlib
++import importlib.util
++import io
++import json
++import os
++from pathlib import Path
++import shutil
++import subprocess
++import tempfile
++import unittest
++
++
++SPEC = importlib.util.spec_from_file_location("repair_pyarrow", Path(__file__).with_name("repair_pyarrow.py"))
++repair = importlib.util.module_from_spec(SPEC)
++SPEC.loader.exec_module(repair)
++
++
++class PyArrowRepairELFTests(unittest.TestCase):
++    @classmethod
++    def setUpClass(cls):
++        cls.gcc = shutil.which("gcc")
++        cls.patchelf = os.environ.get("PATCHELF") or shutil.which("patchelf")
++        if not cls.gcc or not cls.patchelf:
++            raise unittest.SkipTest("Requires gcc and patchelf (or PATCHELF=/path/to/patchelf)")
++
++    def setUp(self):
++        self.temporary = tempfile.TemporaryDirectory(prefix="pyarrow-repair-elf-")
++        self.addCleanup(self.temporary.cleanup)
++        self.root = Path(self.temporary.name).resolve()
++        self.provider_dir = self.root / "private-glibc/lib"
++        self.package = self.root / ".venv/lib/python3.10/site-packages/pyarrow"
++        self.directory = self.root / ".runtime/centos7/core"
++        self.backups = self.directory / "pyarrow-repair-backups"
++        for directory in (self.provider_dir, self.package, self.backups):
++            directory.mkdir(parents=True)
++        self.plugin = self.package / "_test_arrow.so"
++        self.launcher = self.root / "load-plugin"
++        self.manifest = self.directory / "pyarrow-repair.json"
++        self.record = {"root": str(self.root), "profile": "core", "files": {}}
++        self.state = {"root": str(self.root), "profile": "core",
++                      "private": str(self.directory / "python-base"),
++                      "loader": str(self.provider_dir / "ld-linux-x86-64.so.2"),
++                      "patchelf": self.patchelf}
++        provider_source = self.root / "provider.c"
++        provider_source.write_text("int private_probe(void) { return 42; }\n")
++        plugin_source = self.root / "plugin.c"
++        plugin_source.write_text("extern int private_probe(void);\n"
++                                 "int plugin_probe(void) { return private_probe(); }\n")
++        launcher_source = self.root / "launcher.c"
++        launcher_source.write_text(r'''
++#include <dlfcn.h>
++#include <stdio.h>
++int main(int argc, char **argv) {
++    if (argc != 2) return 2;
++    void *handle = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
++    if (!handle) { fprintf(stderr, "%s\n", dlerror()); return 3; }
++    int (*probe)(void) = (int (*)(void))dlsym(handle, "plugin_probe");
++    if (!probe) { fprintf(stderr, "%s\n", dlerror()); return 4; }
++    int result = probe();
++    printf("%d\n", result);
++    dlclose(handle);
++    return result == 42 ? 0 : 5;
++}
++''')
++        commands = (
++            [self.gcc, "-shared", "-fPIC", str(provider_source),
++             "-Wl,-soname,libprivateprobe.so.1", "-o", str(self.provider_dir / "libprivateprobe.so.1")],
++            [self.gcc, "-shared", "-fPIC", str(plugin_source), "-L" + str(self.provider_dir),
++             "-l:libprivateprobe.so.1", "-Wl,--enable-new-dtags,-rpath,$ORIGIN", "-o", str(self.plugin)],
++            [self.gcc, str(launcher_source), "-ldl",
++             "-Wl,--disable-new-dtags,-rpath," + str(self.provider_dir), "-o", str(self.launcher)],
++        )
++        for command in commands:
++            subprocess.run(command, env=repair.clean_env(), check=True, capture_output=True, text=True)
++
++    def run_plugin(self):
++        return subprocess.run([str(self.launcher), str(self.plugin)], env=repair.clean_env(),
++                              capture_output=True, text=True, timeout=30)
++
++    def patch(self, path=None):
++        with contextlib.redirect_stdout(io.StringIO()):
++            repair.patch_object(path or self.plugin, self.state, self.backups,
++                                self.record, self.manifest)
++
++    def test_loader_repair_preserves_cache_and_backup_and_is_idempotent(self):
++        # The executable knows the provider directory, but the plugin's RUNPATH
++        # prevents inheriting that RPATH for its own direct dependency.
++        before = self.run_plugin()
++        self.assertNotEqual(before.returncode, 0)
++        self.assertIn("libprivateprobe.so.1", before.stderr)
++        self.assertIn(29, repair.dynamic_tags(self.plugin))
++        original_hash = repair.digest(self.plugin)
++        original_needed = repair.capture(self.patchelf, "--print-needed", str(self.plugin))
++        cache = self.root / "uv-cache-copy.so"
++        os.link(self.plugin, cache)
++        original_inode = self.plugin.stat().st_ino
++        self.assertEqual(cache.stat().st_ino, original_inode)
++
++        self.patch()
++
++        after = self.run_plugin()
++        self.assertEqual(after.returncode, 0, after.stderr)
++        self.assertEqual(after.stdout.strip(), "42")
++        self.assertNotEqual(self.plugin.stat().st_ino, original_inode)
++        self.assertEqual(cache.stat().st_ino, original_inode)
++        self.assertEqual(repair.digest(cache), original_hash)
++        backup = self.backups / (original_hash + ".elf")
++        self.assertEqual(repair.digest(backup), original_hash)
++        self.assertEqual(repair.capture(self.patchelf, "--print-needed", str(self.plugin)), original_needed)
++        tags = repair.dynamic_tags(self.plugin)
++        self.assertIn(15, tags)
++        self.assertNotIn(29, tags)
++        rpath = repair.capture(self.patchelf, "--print-rpath", str(self.plugin)).split(":")
++        self.assertEqual(rpath[0], str(self.provider_dir))
++        self.assertIn("$ORIGIN", rpath)
++
++        repaired_hash = repair.digest(self.plugin)
++        repaired_inode = self.plugin.stat().st_ino
++        self.patch()
++        self.assertEqual(repair.digest(self.plugin), repaired_hash)
++        self.assertEqual(self.plugin.stat().st_ino, repaired_inode)
++        self.assertEqual(repair.digest(backup), original_hash)
++        self.assertEqual(repair.digest(cache), original_hash)
++        self.assertEqual(list(self.backups.iterdir()), [backup])
++        entry = json.loads(self.manifest.read_text())["files"][str(self.plugin.relative_to(self.root))]
++        self.assertEqual(entry["before_sha256"], original_hash)
++        self.assertEqual(entry["patched_sha256"], repaired_hash)
++        self.assertNotIn("pending", entry)
++
++    def test_symlink_object_is_refused_without_modifying_its_target(self):
++        link = self.package / "symlink.so"
++        link.symlink_to(self.plugin.name)
++        before = repair.digest(self.plugin)
++        with self.assertRaisesRegex(RuntimeError, "Refusing symlink"):
++            self.patch(link)
++        self.assertEqual(repair.digest(self.plugin), before)
++        self.assertFalse(self.manifest.exists())
++        self.assertEqual(list(self.backups.iterdir()), [])
++
++    def test_symlink_parent_is_refused_without_modifying_its_target(self):
++        link = self.root / "linked-package"
++        link.symlink_to(self.package, target_is_directory=True)
++        before = repair.digest(self.plugin)
++        with self.assertRaisesRegex(RuntimeError, "Refusing symlink"):
++            self.patch(link / self.plugin.name)
++        self.assertEqual(repair.digest(self.plugin), before)
++        self.assertFalse(self.manifest.exists())
++        self.assertEqual(list(self.backups.iterdir()), [])
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/scripts/setup/install_centos7.sh b/scripts/setup/install_centos7.sh
+--- a/scripts/setup/install_centos7.sh
++++ b/scripts/setup/install_centos7.sh
+@@ -138,6 +138,14 @@
+ # Keep isolation enabled; forcing torch into that build can require nvcc.
+ DS_BUILD_OPS=0 "${UV}" sync --project "${PROJECT}" --python "${PRIVATE_PYTHON}" --locked
+ "${PRIVATE_PYTHON}" -I "${SETUP_DIR}/centos7/runtime.py" patch-native --state "${STATE}"
++case "${PROFILE}" in
++  core|libero|libero-plus)
++    # Wheel RUNPATH does not inherit the private Python's RPATH. Reapply after
++    # uv sync in case it replaced PyArrow, and verify before torch can mask it.
++    "${ENV_DIR}/bin/python" -I -B -u "${SETUP_DIR}/centos7/repair_pyarrow.py" \
++      --root "${ROOT}" --profile "${PROFILE}" --apply
++    ;;
++esac
+ if [[ "${PROFILE}" == core ]]; then
+   "${ENV_DIR}/bin/python" -I -u "${SETUP_DIR}/centos7/repair_core.py"
+ fi
+diff --git a/scripts/setup/repair_centos7_pyarrow.sh b/scripts/setup/repair_centos7_pyarrow.sh
+new file mode 100644
+--- /dev/null
++++ b/scripts/setup/repair_centos7_pyarrow.sh
+@@ -0,0 +1,39 @@
++#!/usr/bin/env bash
++# Repair installed PyArrow only; do not uv sync, rebuild graphics or run a GPU job.
++set -euo pipefail
++SETUP_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
++ROOT="$(cd -- "${SETUP_DIR}/../.." && pwd)"
++MODE=apply
++if [[ "${1:-}" == --check ]]; then MODE=check; shift; fi
++if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
++  echo 'Usage: bash scripts/setup/repair_centos7_pyarrow.sh [--check] [core|libero|libero-plus ...]'
++  echo 'Default: repair all three installed environments; --check changes no ELF files.'
++  exit 0
++fi
++if [[ $# -eq 0 ]]; then set -- core libero libero-plus; fi
++for profile in "$@"; do
++  case "${profile}" in
++    core|libero|libero-plus) ;;
++    *) echo "Unsupported profile: ${profile}" >&2; exit 2 ;;
++  esac
++done
++cd "${ROOT}"
++failed=0
++for profile in "$@"; do
++  run="${ROOT}/.runtime/centos7/${profile}/run"
++  echo "=== PyArrow ${MODE}: ${profile} ==="
++  if [[ ! -x "${run}" ]]; then
++    echo "Missing profile launcher: ${run}" >&2
++    failed=1
++    continue
++  fi
++  args=(--root "${ROOT}" --profile "${profile}")
++  if [[ "${MODE}" == apply ]]; then args+=(--apply); fi
++  if "${run}" python -I -B -u "${SETUP_DIR}/centos7/repair_pyarrow.py" "${args[@]}"; then
++    echo "PASS profile ${profile}"
++  else
++    echo "FAIL profile ${profile}; see the preceding traceback" >&2
++    failed=1
++  fi
++done
++exit "${failed}"

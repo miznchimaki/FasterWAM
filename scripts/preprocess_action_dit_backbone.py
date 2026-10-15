@@ -108,6 +108,10 @@ def _load_model_config(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     if not isinstance(video_cfg, dict) or not isinstance(action_cfg, dict):
         raise ValueError("`video_dit_config` and `action_dit_config` must resolve to dicts.")
 
+    # Adapter options are training settings, not dense DiT constructor kwargs.
+    video_cfg.pop("lora", None)
+    action_cfg.pop("lora", None)
+
     if _is_unresolved_interpolation(video_cfg.get("action_dim")):
         print("[WARN] `video_dit_config.action_dim` is unresolved; defaulting to 7 for preprocessing.")
         video_cfg["action_dim"] = 7

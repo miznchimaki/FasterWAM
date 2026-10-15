@@ -1,0 +1,251 @@
+diff --git a/environments/libero/pyproject.toml b/environments/libero/pyproject.toml
+index 7c993d3..2dcf79e 100644
+--- a/environments/libero/pyproject.toml
++++ b/environments/libero/pyproject.toml
+@@ -49,6 +49,9 @@ dependencies = [
+ [tool.uv]
+ package = false
+ environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
++# robosuite declares the GUI wheel, but LIBERO evaluation uses offscreen rendering.
++# The GUI and headless wheels both own cv2 and must not be installed together.
++exclude-dependencies = ["opencv-python"]
+ 
+ [tool.uv.extra-build-dependencies]
+ egl-probe = ["cmake==3.31.10"]
+diff --git a/environments/libero/uv.lock b/environments/libero/uv.lock
+index 958551f..5201e8f 100644
+--- a/environments/libero/uv.lock
++++ b/environments/libero/uv.lock
+@@ -8,6 +8,9 @@ supported-markers = [
+     "platform_machine == 'x86_64' and sys_platform == 'linux'",
+ ]
+ 
++[manifest]
++excludes = ["opencv-python"]
++
+ [[package]]
+ name = "absl-py"
+ version = "2.5.0"
+@@ -1050,18 +1053,6 @@ wheels = [
+     { url = "https://files.pythonhosted.org/packages/e3/94/1843518e420fa3ed6919835845df698c7e27e183cb997394e4a670973a65/omegaconf-2.3.0-py3-none-any.whl", hash = "sha256:7b4df175cdb08ba400f45cae3bdcae7ba8365db4d165fc65fd04b050ab63b46b" },
+ ]
+ 
+-[[package]]
+-name = "opencv-python"
+-version = "4.11.0.86"
+-source = { registry = "https://pypi.org/simple" }
+-dependencies = [
+-    { name = "numpy" },
+-]
+-sdist = { url = "https://files.pythonhosted.org/packages/17/06/68c27a523103dad5837dc5b87e71285280c4f098c60e4fe8a8db6486ab09/opencv-python-4.11.0.86.tar.gz", hash = "sha256:03d60ccae62304860d232272e4a4fda93c39d595780cb40b161b310244b736a4" }
+-wheels = [
+-    { url = "https://files.pythonhosted.org/packages/2c/8b/90eb44a40476fa0e71e05a0283947cfd74a5d36121a11d926ad6f3193cc4/opencv_python-4.11.0.86-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6b02611523803495003bd87362db3e1d2a0454a6a63025dc6658a9830570aa0d" },
+-]
+-
+ [[package]]
+ name = "opencv-python-headless"
+ version = "4.11.0.86"
+@@ -1325,7 +1316,6 @@ dependencies = [
+     { name = "mujoco" },
+     { name = "numba" },
+     { name = "numpy" },
+-    { name = "opencv-python" },
+     { name = "pillow" },
+     { name = "scipy" },
+ ]
+diff --git a/scripts/setup/centos7/benchmark_post.sh b/scripts/setup/centos7/benchmark_post.sh
+index fde43b9..c72799f 100755
+--- a/scripts/setup/centos7/benchmark_post.sh
++++ b/scripts/setup/centos7/benchmark_post.sh
+@@ -27,6 +27,11 @@ case "${PROFILE}" in
+     fi
+     "${ENV_DIR}/bin/python" "${SETUP_DIR}/configure_libero.py" \
+       --source-root "${SOURCE_DIR}" --config-dir "${ROOT}/.runtime/${PROFILE}"
++    if [[ "${PROFILE}" == libero ]]; then
++      # Migrating the old dual-provider lock can remove shared cv2 files even
++      # when headless metadata remains installed. Verify and repair that case.
++      "${ENV_DIR}/bin/python" -I "${SETUP_DIR}/centos7/repair_libero_opencv.py" --repair
++    fi
+     ;;
+   robotwin)
+     SOURCE_DIR="${ROOT}/third_party/RoboTwin"
+diff --git a/scripts/setup/centos7/doctor.py b/scripts/setup/centos7/doctor.py
+index 0513bcb..8a21dd7 100755
+--- a/scripts/setup/centos7/doctor.py
++++ b/scripts/setup/centos7/doctor.py
+@@ -294,8 +294,9 @@ def main():
+     args = parser.parse_args()
+     if args.runtime_only and (args.require_cuda or args.video or args.render):
+         parser.error("--runtime-only cannot be combined with --require-cuda, --video, or --render")
++    # Match the LIBERO evaluation launchers even for import-only checks.
+     # MuJoCo reads this setting during its first import in package_check().
+-    if args.render:
++    if args.profile.startswith("libero") and not args.runtime_only:
+         backend = os.environ.setdefault("MUJOCO_GL", "osmesa")
+         if backend in ("osmesa", "egl"):
+             os.environ.setdefault("PYOPENGL_PLATFORM", backend)
+diff --git a/scripts/setup/centos7/repair_libero_opencv.py b/scripts/setup/centos7/repair_libero_opencv.py
+new file mode 100644
+--- /dev/null
++++ b/scripts/setup/centos7/repair_libero_opencv.py
+@@ -0,0 +1,109 @@
++#!/usr/bin/env python3
++"""Keep exactly one headless OpenCV provider in the private LIBERO environment.
++
++Use .runtime/centos7/libero/run python <this-file> --repair after applying the
++matching pyproject/lock fix. No GPU or rendering context is created here.
++"""
++from __future__ import annotations
++
++import argparse
++import importlib
++import importlib.metadata
++import json
++import os
++from pathlib import Path
++import subprocess
++import sys
++
++
++VERSION = "4.11.0.86"
++PROVIDERS = {"opencv-python", "opencv-python-headless"}
++CHECK = r'''
++import importlib.metadata as md
++import re
++import cv2
++assert md.version("opencv-python-headless") == "4.11.0.86"
++for name in ("opencv-python", "opencv-contrib-python", "opencv-contrib-python-headless"):
++    try:
++        md.version(name)
++    except md.PackageNotFoundError:
++        continue
++    raise RuntimeError("Conflicting cv2 provider is still installed: " + name)
++assert cv2.__version__ == "4.11.0", cv2.__version__
++gui = re.search(r"^\s*GUI:\s*(\S+)", cv2.getBuildInformation(), re.M)
++assert gui and gui.group(1) == "NONE", "cv2 is not the headless build"
++import numpy as np
++assert cv2.resize(np.zeros((2, 2, 3), dtype=np.uint8), (4, 4)).shape == (4, 4, 3)
++print("PASS OpenCV: opencv-python-headless==4.11.0.86, GUI=NONE, resize OK")
++print("    cv2:", cv2.__file__)
++'''
++
++
++def versions() -> dict[str, str]:
++    importlib.invalidate_caches()
++    return {d.metadata["Name"].lower().replace("_", "-"): d.version
++            for d in importlib.metadata.distributions() if d.metadata["Name"]}
++
++
++def probe(python: str) -> subprocess.CompletedProcess:
++    # A fresh process is essential: repair replaces the cv2 shared object.
++    return subprocess.run([python, "-I", "-B", "-c", CHECK], text=True,
++                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
++
++
++def ensure_headless(python: str, uv: str, before: dict[str, str], repair: bool) -> None:
++    result = probe(python)
++    if result.returncode == 0:
++        print(result.stdout, end="")
++        return
++    print("DIAGNOSTIC OpenCV before repair:", flush=True)
++    print(result.stdout + result.stderr, end="", flush=True)
++    if not repair:
++        raise RuntimeError("OpenCV check failed. Apply the headless dependency fix, then use --repair.")
++    if any(name.startswith("opencv-contrib-") for name in before):
++        raise RuntimeError("Unexpected opencv-contrib installation; refusing to remove a custom provider.")
++    if before.get("numpy") != "1.26.4":
++        raise RuntimeError("Expected the locked numpy==1.26.4; resolve this difference before repair.")
++    for name in PROVIDERS:
++        if name in before and before[name] != VERSION:
++            raise RuntimeError(f"Unexpected {name}=={before[name]}; refusing an implicit version change.")
++    # Both distributions own cv2 files. Removing only one can break the other;
++    # uninstall both before rebuilding the namespace from a single wheel.
++    subprocess.run([uv, "pip", "uninstall", "--python", python,
++                    "opencv-python", "opencv-python-headless"], check=True)
++    subprocess.run([uv, "pip", "install", "--python", python,
++                    "--no-deps", "--only-binary", ":all:",
++                    "--index", "pypi=https://pypi.tuna.tsinghua.edu.cn/simple",
++                    f"opencv-python-headless=={VERSION}"], check=True)
++    after = versions()
++    if {k: v for k, v in before.items() if k not in PROVIDERS} != {
++            k: v for k, v in after.items() if k not in PROVIDERS}:
++        raise RuntimeError("Unexpected change to a non-OpenCV package; inspect the installation log.")
++    result = probe(python)
++    print(result.stdout, end="")
++    if result.returncode:
++        print(result.stderr, file=sys.stderr, end="")
++        raise RuntimeError("Headless OpenCV was reinstalled but its import/check still fails.")
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--repair", action="store_true", help="Repair the two known conflicting providers")
++    args = parser.parse_args()
++    root = Path(__file__).resolve().parents[3]
++    state_dir = root / ".runtime/centos7/libero"
++    state = json.loads((state_dir / "state.json").read_text())
++    venv = root / ".venvs/libero"
++    private = state_dir / "python-base"
++    if (state.get("root") != str(root) or state.get("profile") != "libero"
++            or state.get("venv") != str(venv) or state.get("private") != str(private)
++            or Path(sys.prefix) != venv or Path(sys.base_prefix) != private):
++        raise RuntimeError("Run this helper with this repository's private LIBERO Python only.")
++    uv = state_dir / "bin/uv"
++    if not uv.is_file() or not os.access(uv, os.X_OK):
++        raise RuntimeError(f"Missing prepared LIBERO uv launcher: {uv}")
++    ensure_headless(sys.executable, str(uv), versions(), args.repair)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/scripts/setup/centos7/OPENCV.zh-CN.md b/scripts/setup/centos7/OPENCV.zh-CN.md
+new file mode 100644
+--- /dev/null
++++ b/scripts/setup/centos7/OPENCV.zh-CN.md
+@@ -0,0 +1,46 @@
++# LIBERO 的 OpenCV headless 修复
++
++旧 `environments/libero/uv.lock` 同时包含 `opencv-python` 和
++`opencv-python-headless` 4.11.0.86。前者由 robosuite 1.4.0 间接引入。
++二者共同写入 `cv2`，GUI 版本可能覆盖 headless 版本并在导入时要求
++`libGL.so.1`。OpenCV 官方要求同一环境只安装一个变体。
++
++修复在 LIBERO 项目中明确排除 `opencv-python`，保留原本显式要求的
++`opencv-python-headless==4.11.0.86`；锁文件仅删除 GUI 包及对应依赖边，
++其余包版本、下载 URL 和哈希保持不变。此策略针对无窗口的 LIBERO 评测，
++不支持 OpenCV 的 `imshow` 窗口；MuJoCo 离屏渲染有独立的 OSMesa/EGL 依赖。
++LIBERO doctor 的普通导入检查现在也采用与评测脚本一致的默认 OSMesa 后端，
++避免普通检查隐式用 EGL、正式评测却用 OSMesa；显式配置的后端保持优先。
++
++已经完成大部分安装、仅在最终导入检查失败时，应用补丁后直接执行：
++
++```bash
++.runtime/centos7/libero/run python scripts/setup/centos7/repair_libero_opencv.py --repair
++.runtime/centos7/libero/run python scripts/setup/centos7/doctor.py --profile libero --require-cuda
++```
++
++修复器只接受当前仓库的 private LIBERO Python，已有正确 headless 模块时不
++重复安装。否则先卸载两个冲突包，再以 `--no-deps` 从清华源安装固定 headless
++版本，验证 import、GUI=NONE、resize，以及其他包的版本保持不变。它不会
++启动 CUDA 或仿真，也不调用完整 `uv sync`。下载失败时可重跑修复命令。
++
++正常安装入口也会自动验证和修复旧环境迁移时被卸载器删除的共享 cv2 文件。
++修改锁文件是必要的：只手动卸载 GUI 包，旧锁下次同步时仍会把它装回来。
++
++注意 robosuite 发布的 wheel 元数据仍声明 `opencv-python`；通用的
++`pip check`/`uv pip check` 可能据此提示缺少该包。这是已明确配置的 headless
++替代，不应为了消除这个提示重新混装 GUI 包。保留上游 wheel 元数据，不伪造
++包名或修改 dist-info。请以 cv2 的实际构建检查和 robosuite 导入、渲染验收判断。
++
++导入检查通过后，在有空闲 GPU 的评测节点进一步执行：
++
++```bash
++.runtime/centos7/libero/run python scripts/setup/centos7/doctor.py \
++  --profile libero --require-cuda --render
++```
++
++默认渲染后端为 OSMesa；如果出现缺少 `libOSMesa`、EGL 初始化失败等信息，
++需根据服务器实际图形库继续处理，headless OpenCV 本身不提供 MuJoCo 渲染器。
++不要把 `libEGL.so`/`libOSMesa.so` 伪装成 `libGL.so.1`，也不要全局导出包含
++私有 libc 的 `LD_LIBRARY_PATH`。若仍失败，保留完整 traceback 以区分 cv2 与
++渲染后端的加载链。

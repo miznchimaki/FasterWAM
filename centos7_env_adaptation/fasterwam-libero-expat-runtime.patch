@@ -1,0 +1,256 @@
+diff --git a/scripts/setup/centos7/libero_graphics.py b/scripts/setup/centos7/libero_graphics.py
+--- a/scripts/setup/centos7/libero_graphics.py
++++ b/scripts/setup/centos7/libero_graphics.py
+@@ -110,6 +110,25 @@
+         r"(?:ld-linux[^/]*\.so(?:\.\d+)*|ld-\d[^/]*\.so|"
+         r"lib(?:c|m|mvec|pthread|dl|rt|util|resolv|anl|BrokenLocale|thread_db)\.so(?:\.\d+)*|"
+         r"libnss_[A-Za-z0-9_]+\.so(?:\.\d+)*)", name))
++
++
++PYTHON_SUPPORT_SONAMES = ('libexpat.so.1', 'libz.so.1')
++
++
++def base_runtime_library(state, name):
++    """Preserve the base Python's Expat/zlib ABI when graphics also uses it."""
++    if name not in PYTHON_SUPPORT_SONAMES or not state.get('source_prefix'):
++        return None
++    candidate = Path(state['source_prefix']) / 'lib' / name
++    if not candidate.exists() and not candidate.is_symlink():
++        return None
++    real = _readable_elf(candidate)
++    if real is None:
++        raise GraphicsError('Base Python support library is unreadable or not x86_64 ELF: ' + str(candidate))
++    result = _run([state['patchelf'], '--print-soname', real])
++    if result.returncode or result.stdout.strip() != name:
++        raise GraphicsError('Unexpected SONAME for base Python support library: ' + str(candidate))
++    return real
+ 
+ 
+ def plan_graphics(state, extra_dirs=(), glvnd_dir=None):
+@@ -218,6 +237,12 @@
+     def locate(name):
+         nonlocal vendor_dir, vendor_version
+         _basename(name)
++        # A copied CentOS 7 libexpat/libz at high priority can break the newer
++        # private Python, even though that copy satisfies an old Mesa library.
++        # If graphics needs the same SONAME, reuse the base Python's provider.
++        support = base_runtime_library(state, name)
++        if support is not None:
++            return support
+         is_nvidia = name.startswith(("libnvidia-", "libEGL_nvidia", "libGLX_nvidia"))
+         candidates = ([vendor_dir / name] if is_nvidia and vendor_dir else [])
+         candidates += [Path(p).expanduser() / name for p in extra_dirs]
+diff --git a/scripts/setup/centos7/repair_libero_loader.py b/scripts/setup/centos7/repair_libero_loader.py
+--- a/scripts/setup/centos7/repair_libero_loader.py
++++ b/scripts/setup/centos7/repair_libero_loader.py
+@@ -84,7 +84,8 @@
+             os.unlink(name)
+ 
+ 
+-def patch_copy(source: Path, destination: Path, state: dict, backups: Path, before_publish=None) -> str:
++def patch_copy(source: Path, destination: Path, state: dict, backups: Path, before_publish=None,
++               rpath_override=None) -> str:
+     """Never mutate source/cache/system ELF in place; publish a patched copy."""
+     if destination.is_symlink() or destination.parent.resolve() != destination.parent:
+         raise RuntimeError(f'Refusing symlink destination: {destination}')
+@@ -92,7 +93,7 @@
+         raise RuntimeError(f'Expected Linux x86_64 shared ELF: {source}')
+     tool = state['patchelf']
+     old = capture(tool, '--print-rpath', str(source))
+-    wanted = desired_rpath(state, old)
++    wanted = desired_rpath(state, old) if rpath_override is None else rpath_override
+     if source == destination and old == wanted and not has_runpath(source):
+         print(f'UNCHANGED {destination}', flush=True)
+         return digest(destination)
+@@ -175,6 +176,129 @@
+             print(f'RETIRED {path} -> {target}', flush=True)
+         del record['graphics'][name]
+         atomic_json(manifest_path, record)
++
++
++PYTHON_SUPPORT_PROBE = r'''
++import ctypes, json, pathlib, sys
++mode, expected = sys.argv[1], json.loads(sys.argv[2])
++try:
++    if mode == 'preview':
++        for name, source in expected.items():
++            ctypes.CDLL(source, mode=ctypes.RTLD_GLOBAL)
++            print('Preview base provider:', name, source)
++    import pyexpat
++    import xml.etree.ElementTree as ET
++    import zlib
++    payload = b'<root><item>fasterwam</item></root>'
++    assert ET.fromstring(payload).findtext('item') == 'fasterwam'
++    assert zlib.decompress(zlib.compress(payload)) == payload
++    print('Expat:', pyexpat.EXPAT_VERSION, '; pyexpat:', getattr(pyexpat, '__file__', '<built-in>'))
++    print('zlib:', zlib.ZLIB_RUNTIME_VERSION, '; XML parsing and compression OK')
++finally:
++    mapped = set()
++    for line in pathlib.Path('/proc/self/maps').read_text().splitlines():
++        parts = line.split(None, 5)
++        if len(parts) == 6 and parts[5].startswith('/'):
++            path = pathlib.Path(parts[5])
++            if path.name.startswith(('libexpat.so.', 'libz.so.')):
++                mapped.add(path)
++    for path in sorted(mapped):
++        print('Python support mapped:', path)
++# A statically bundled parser need not map libexpat. For dynamic providers,
++# verify the normal (no-preload) child really stopped resolving the stale copy.
++for name, source in expected.items():
++    for path in mapped:
++        if path.name.startswith(name) and path.resolve() != pathlib.Path(source).resolve():
++            raise RuntimeError('Unexpected Python support library: ' + str(path))
++'''
++
++
++def patch_python_support_paths(state, backups, record, manifest_path, providers):
++    """Repair only relocated private pyexpat/zlib DSOs after a failed probe."""
++    root = Path(state['root'])
++    directory = Path(state['private']) / 'lib/python3.10/lib-dynload'
++    targets = []
++    for module_name, soname in (('pyexpat', 'libexpat.so.1'), ('zlib', 'libz.so.1')):
++        if soname not in providers:
++            continue
++        matches = sorted(directory.glob(module_name + '*.so'))
++        if len(matches) > 1:
++            raise RuntimeError(f'Ambiguous private standard-library extension: {matches}')
++        for path in matches:
++            if path.resolve() != path or not path.is_relative_to(root) or not elf_dso(path):
++                raise RuntimeError(f'Unexpected private standard-library target: {path}')
++            targets.append(path)
++    if not targets:
++        raise RuntimeError('No private pyexpat/zlib ELF found for search-path repair.')
++    for path in targets:
++        old = capture(state['patchelf'], '--print-rpath', str(path))
++        print(f'PYTHON SUPPORT SEARCH PATH {path}: {old!r}; RUNPATH={has_runpath(path)}', flush=True)
++        origins = [p for p in old.split(':') if '$ORIGIN' in p or '${ORIGIN}' in p]
++        paths = [str(Path(state['loader']).parent), str(Path(state['source_prefix']) / 'lib')]
++        paths += origins + state['rpath'] + [p for p in old.split(':') if p]
++        wanted = ':'.join(dict.fromkeys(paths))
++        relative = str(path.relative_to(root))
++        record.setdefault('originals', {})
++        if relative not in record['originals']:
++            backup = backups / (digest(path) + '.elf')
++            if not backup.exists():
++                shutil.copy2(path, backup)
++            record['originals'][relative] = str(backup.relative_to(root))
++            atomic_json(manifest_path, record)
++        sha = patch_copy(path, path, state, backups, rpath_override=wanted)
++        record.setdefault('python_support', {})[relative] = sha
++        atomic_json(manifest_path, record)
++
++
++def repair_python_support(state, native, backups, record, manifest_path, graphics):
++    """Retire verified legacy Expat/zlib copies before XML code generation.
++
++    Validate the base provider in a disposable child first; the final child
++    performs a normal import with no preload. Only earlier managed copies move.
++    """
++    conflicts = {}
++    for name in graphics.PYTHON_SUPPORT_SONAMES:
++        known = record['graphics'].get(name)
++        if not known:
++            continue
++        source = graphics.base_runtime_library(state, name)
++        if source is None:
++            continue
++        destination = native / name
++        if destination.exists() or destination.is_symlink():
++            owned_hash(destination, known)
++        if known.get('source_sha256') == digest(source) and not known.get('pending'):
++            continue
++        conflicts[name] = str(source)
++        print(f'PYTHON SUPPORT CONFLICT {destination}; base provider: {source}', flush=True)
++    if conflicts:
++        # This preloading is diagnostic only and never applied to a launcher.
++        # Do not move anything unless the base libraries can actually serve
++        # this private Python's pyexpat and compression modules.
++        probe('base Expat/zlib compatibility preview', PYTHON_SUPPORT_PROBE,
++              'disable', 'preview', json.dumps(conflicts))
++        keep = set(record['graphics']) - set(conflicts)
++        retire_obsolete(native, backups, record, keep, manifest_path)
++    try:
++        probe('normal Python XML and zlib before graphics build', PYTHON_SUPPORT_PROBE,
++              'disable', 'normal', json.dumps(conflicts))
++    except subprocess.CalledProcessError:
++        # A copied Conda extension can also have RUNPATH=$ORIGIN/../.., which
++        # resolves into python-base/lib after relocation. Validate a working
++        # base provider before changing only the private extension's RPATH.
++        print('DIAGNOSTIC normal XML/zlib import failed; checking relocated extension search paths.', flush=True)
++        providers = {}
++        for name in graphics.PYTHON_SUPPORT_SONAMES:
++            source = graphics.base_runtime_library(state, name)
++            if source is not None:
++                providers[name] = str(source)
++        if not providers:
++            raise RuntimeError('Base Python Expat/zlib providers are missing; no extension files were changed.')
++        probe('base Expat/zlib compatibility before RPATH repair', PYTHON_SUPPORT_PROBE,
++              'disable', 'preview', json.dumps(providers))
++        patch_python_support_paths(state, backups, record, manifest_path, providers)
++        probe('normal Python XML and zlib after RPATH repair', PYTHON_SUPPORT_PROBE,
++              'disable', 'normal', json.dumps(providers))
+ 
+ 
+ EGL_PROBE = r'''
+@@ -297,6 +421,9 @@
+         # Fresh process, no import torch and no preloaded librt workaround.
+         probe('fresh MuJoCo import without graphics',
+               'import mujoco; print("mujoco", mujoco.__version__)', 'disable')
++        # Old Mesa's dependency copies can shadow the base Python's Expat/zlib.
++        # Cleanup must precede GLVND's XML code generation, not follow it.
++        repair_python_support(state, native, backups, record, manifest_path, module)
+     if args.build_glvnd:
+         build_spec = importlib.util.spec_from_file_location('fasterwam_build_glvnd', helper.with_name('build_libero_glvnd.py'))
+         builder = importlib.util.module_from_spec(build_spec)
+@@ -351,6 +478,8 @@
+         record['graphics'][name].pop('previous_sha256', None)
+         atomic_json(manifest_path, record)
+     retire_obsolete(native, backups, record, plan, manifest_path)
++    probe('normal Python XML and zlib after graphics staging', PYTHON_SUPPORT_PROBE,
++          'disable', 'normal', '{}')
+     vendor_dir = state_dir / 'egl-vendor'
+     vendor_json = vendor_dir / '10_fasterwam_nvidia.json'
+     if vendor_dir.is_symlink() or vendor_json.is_symlink():
+diff --git a/scripts/setup/centos7/LOADER.zh-CN.md b/scripts/setup/centos7/LOADER.zh-CN.md
+--- a/scripts/setup/centos7/LOADER.zh-CN.md
++++ b/scripts/setup/centos7/LOADER.zh-CN.md
+@@ -4,7 +4,7 @@
+ 本脚本只操作当前 repo 的 `.venvs/libero` 和 `.runtime/centos7/libero`。
+ 在没有进程使用这个 LIBERO 环境时应用；独立 core 环境的实验不需要停止。
+ 
+-## 对应的两个故障
++## 对应的故障
+ 
+ 1. `_specs` 的 `RUNPATH=$ORIGIN` 绕过 Python 的 RPATH，导致迁移后的 loader
+    去旧构建目录寻找 `librt.so.1`。修复保留 `$ORIGIN`，给 MuJoCo DSO 补齐
+@@ -12,6 +12,20 @@
+ 2. `libEGL.so.1` 能被 `ctypes.CDLL` 加载，但实际是旧 Mesa，随后出现
+    `DRI2: failed to open glapi provider` / `eglQueryDevicesEXT is not available`。
+    NVIDIA vendor 库存在，并不能证明当前 EGL 前端能分派到它。
++3. GLVND 构建到 XML 代码生成时报 `pyexpat: undefined symbol:
++   XML_SetAllocTrackerActivationThreshold`。第一版脚本复制到 `native-libs`
++   的系统 `libexpat.so.1` 可能抢先于基底 Conda 的新版库被加载；迁移后的
++   标准库扩展自身 RUNPATH 也可能绕过 Python 主程序的搜索路径。
++   ElementTree 随后报的 `No module named expat` 是二次报错，不表示需要 pip
++   安装一个 expat 包。
++
++修复器会在 GLVND 编译之前检查历史记录里的 Expat/zlib 副本，先在独立进程
++验证基底库确实能支持 XML 解析和压缩，再将哈希匹配的旧受管副本移入备份。
++接着通过普通新进程（不预加载）验证 Python 的 XML/zlib，并打印实际库路径。
++若普通导入仍失败、但基底库预检成功，才对私有 `pyexpat`/`zlib` 扩展做
++带备份的 RPATH 修复；保留 NEEDED，不修改基底 Conda 文件或系统库。
++图形依赖若仍需要 Expat/zlib，会优先采用基底 Python 的同 SONAME 库，
++并在图形库部署后再次检查普通 XML/zlib 导入，防止旧系统副本被重新引入。
+ 
+ ## 应用
+ 
+@@ -83,7 +97,8 @@
+ 检测到未知修改会停止。中断后可重跑同一命令，已构建并验证的 GLVND 会复用。
+ CentOS7 安装入口在之后 uv 同步时会调用修复器，使用记录中的 GLVND 目录。
+ 
+-检查依次包括：私有 librt、禁用图形的 MuJoCo 独立导入、图形库 dlopen、
++检查依次包括：私有 librt、禁用图形的 MuJoCo 独立导入、普通 Python XML/zlib
++解析和实际加载路径、图形库 dlopen、
+ 实际 EGL dispatcher 的 `1.5 libglvnd` 版本标记、`eglQueryDevicesEXT` 函数及
+ 设备数量、加载路径、全新进程中的 MuJoCo/robosuite EGL 导入。
+ 设备数为 0 会明确报错，需要检查作业 GPU 分配、设备权限和驱动可见性；

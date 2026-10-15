@@ -6,6 +6,7 @@ from .sparse_action_dit import SparseActionDiT, DEFAULT_SPARSE_MOT_CONDITION_LAY
 from .jointwam import JointWAM
 from .helpers.loader import load_wan22_ti2v_5b_components
 from .sparse_mot import SparseMoT
+from fasterwam.utils.lora import configure_expert_lora, split_lora_config
 
 
 class FasterWAM(JointWAM):
@@ -50,6 +51,11 @@ class FasterWAM(JointWAM):
             )
         if action_dit_config is None:
             raise ValueError("`action_dit_config` is required for FasterWAM.")
+
+        # LoRA options are not constructor arguments of either dense DiT.
+        # Load the original pretrained weights before changing Linear modules.
+        video_dit_config, video_lora_config = split_lora_config(video_dit_config)
+        action_dit_config, action_lora_config = split_lora_config(action_dit_config)
 
         if condition_layers is None:
             condition_layers = action_dit_config.get("condition_layers", DEFAULT_SPARSE_MOT_CONDITION_LAYERS)
@@ -144,4 +150,8 @@ class FasterWAM(JointWAM):
             "video_kv_fusion": video_kv_fusion,
             "video_kv_fusion_init": video_kv_fusion_init,
         }
+        # Inject only after all original modules (including proprio) have been
+        # initialized, preserving the base initialization's RNG sequence.
+        configure_expert_lora(model.video_expert, video_lora_config)
+        configure_expert_lora(model.action_expert, action_lora_config)
         return model
