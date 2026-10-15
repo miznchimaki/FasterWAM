@@ -136,6 +136,63 @@ def multiprocessing_check():
             process.join(5)
 
 
+PYARROW_PROBE = r'''
+import sys
+if any(name == "torch" or name.startswith("torch.") for name in sys.modules):
+    raise RuntimeError("Python startup imported torch; cannot check PyArrow independently")
+import pyarrow as pa
+import pyarrow.compute as pc
+import pyarrow.dataset as ds
+import pyarrow.ipc as ipc
+import pyarrow.parquet as pq
+if pa.__version__ != sys.argv[1]:
+    raise RuntimeError(f"pyarrow: expected {sys.argv[1]}, found {pa.__version__}")
+table = pa.table({"number": pa.array([1, None, 3], type=pa.int64()),
+                  "text": ["first", "second", None]})
+if pc.sum(table["number"]).as_py() != 4:
+    raise RuntimeError("PyArrow compute returned an unexpected sum")
+if not ds.dataset(table).to_table().equals(table):
+    raise RuntimeError("PyArrow dataset scan changed the table")
+sink = pa.BufferOutputStream()
+with ipc.new_stream(sink, table.schema) as writer:
+    writer.write_table(table)
+if not ipc.open_stream(sink.getvalue()).read_all().equals(table):
+    raise RuntimeError("PyArrow IPC roundtrip changed the table")
+sink = pa.BufferOutputStream()
+pq.write_table(table, sink, compression="snappy")
+if not pq.read_table(pa.BufferReader(sink.getvalue())).equals(table):
+    raise RuntimeError("PyArrow Parquet roundtrip changed the table")
+import json
+print("FASTERWAM_PYARROW_PROBE=" + json.dumps({"version": pa.__version__,
+      "prefix": sys.prefix, "executable": sys.executable}))
+'''
+
+
+def pyarrow_check(expected_version="23.0.0"):
+    # torch can load librt before Arrow and hide an incomplete DSO search path.
+    # A fresh process checks the same standalone import used by dataset tools.
+    environment = os.environ.copy()
+    for name in ("LD_LIBRARY_PATH", "LD_PRELOAD", "LD_AUDIT", "LD_DEBUG",
+                 "LD_DEBUG_OUTPUT", "PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP"):
+        environment.pop(name, None)
+    result = subprocess.run(
+        [sys.executable, "-I", "-B", "-u", "-c", PYARROW_PROBE, expected_version],
+        env=environment, capture_output=True, text=True, timeout=120)
+    require(result.returncode == 0,
+            f"fresh Python exited {result.returncode}:\n"
+            f"{(result.stderr + result.stdout).strip()[-4000:]}")
+    marker = "FASTERWAM_PYARROW_PROBE="
+    records = [line[len(marker):] for line in result.stdout.splitlines()
+               if line.startswith(marker)]
+    require(len(records) == 1, "Fresh PyArrow probe did not report its result")
+    info = json.loads(records[0])
+    require(info.get("version") == expected_version,
+            f"Fresh PyArrow probe reported an unexpected version: {info}")
+    require(Path(info.get("prefix", "")).resolve() == Path(sys.prefix).resolve(),
+            f"Fresh PyArrow probe used another environment: {info}")
+    print(f"    fresh PyArrow {info['version']} import / IPC / Parquet passed (before torch)")
+
+
 def package_check(profile):
     robotwin = profile == "robotwin"
     versions = {"torch": "2.4.1+cu121" if robotwin else "2.7.1+cu128",
@@ -152,6 +209,10 @@ def package_check(profile):
     else:
         versions.update(sapien="3.0.0b1", mplib="0.2.1")
     errors = []
+    try:
+        pyarrow_check(versions["pyarrow"])
+    except Exception as error:
+        errors.append(f"fresh pyarrow import / IPC / Parquet: {error}")
     for module, expected in versions.items():
         try:
             actual = importlib.metadata.version(module)

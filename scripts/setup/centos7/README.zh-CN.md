@@ -1,5 +1,9 @@
 # FasterWAM：CentOS 7 + 私有 glibc + uv
 
+PyArrow 独立导入报 `librt.so.1: ... Permission denied` 时，参见
+[PYARROW.zh-CN.md](PYARROW.zh-CN.md)。三个已安装环境可使用
+`bash scripts/setup/repair_centos7_pyarrow.sh` 修复，无需重新安装。
+
 适用于 `miznchimaki/FasterWAM`，核对的仓库提交为
 `83667817df0d4f823f39d90700e61ea2f432ac45`。新增适配脚本；原仓库源码、
 `pyproject.toml`、四份 `uv.lock`、原安装脚本均未修改。没有执行 git add、commit 或 push。

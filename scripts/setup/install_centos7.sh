@@ -138,6 +138,14 @@ fi
 # Keep isolation enabled; forcing torch into that build can require nvcc.
 DS_BUILD_OPS=0 "${UV}" sync --project "${PROJECT}" --python "${PRIVATE_PYTHON}" --locked
 "${PRIVATE_PYTHON}" -I "${SETUP_DIR}/centos7/runtime.py" patch-native --state "${STATE}"
+case "${PROFILE}" in
+  core|libero|libero-plus)
+    # Wheel RUNPATH does not inherit the private Python's RPATH. Reapply after
+    # uv sync in case it replaced PyArrow, and verify before torch can mask it.
+    "${ENV_DIR}/bin/python" -I -B -u "${SETUP_DIR}/centos7/repair_pyarrow.py" \
+      --root "${ROOT}" --profile "${PROFILE}" --apply
+    ;;
+esac
 if [[ "${PROFILE}" == core ]]; then
   "${ENV_DIR}/bin/python" -I -u "${SETUP_DIR}/centos7/repair_core.py"
 fi
