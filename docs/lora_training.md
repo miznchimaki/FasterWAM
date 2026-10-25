@@ -1,4 +1,4 @@
-# FasterWAM PEFT LoRA 实验
+# FasterWAM LoRA 与 backbone 冻结实验
 
 使用 `peft==0.14.0` 的 `inject_adapter_in_model`，在原生 video/action DiT 内替换选定的 Linear。不会给专家套上改变 `blocks`、`pre_dit`、`post_dit` 路径的 PeftModel 外层。先加载 Wan 视频权重及预处理好的 SparseActionDiT dense backbone，完成原模型初始化，再注入 adapter。
 
@@ -14,19 +14,32 @@ uv pip install --python "$(command -v python)" --no-deps \
 python -c 'import peft, transformers, torch; print(peft.__version__, transformers.__version__, torch.__version__)'
 ```
 
-配置就在 `configs/model/fasterwam.yaml` 的 `video_dit_config.lora` 和 `action_dit_config.lora` 下：
+配置就在 `configs/model/fasterwam.yaml` 的 `video_dit_config` 和 `action_dit_config` 下。两个专家默认均为 `freeze: false`、`lora.enabled: false`，恢复原始全参训练；LoRA 参数位于各自的 `lora` 子配置中：
 
 | 配置 | video 默认值 | action 默认值 |
 | --- | --- | --- |
-| `enabled` | `false`，保留全参训练 | `true`，训练 backbone LoRA A/B 和完整 action 输入输出层 |
+| `lora.enabled` | `false` | `false` |
+| `freeze` | `false` | `false` |
 | `r` | 16 | 16 |
 | `lora_alpha` | 16 | 16 |
 | `lora_dropout` | 0.0 | 0.0 |
 | `target_modules` | self/cross attention 的 q/k/v/o、FFN 的两个 Linear | 同左，不包含 `action_encoder`、`head` |
 
-`enabled=false` 的含义是这个专家不使用 LoRA，按原来方式全参训练，**不是冻结整个专家**。开启时，除下述 action 输入输出层外，base 的所有原始参数（包括 bias、norm 和 modulation）冻结，选定层只训练 LoRA A/B；固定使用 `bias="none"`、普通 LoRA、identity 初始化，不使用 DoRA、RS-LoRA 或 `modules_to_save`。标准初始化的 B 为零，因此注入本身不改变初始模型函数。
+每个专家独立选择训练方式，**LoRA 优先于 freeze**：
 
-Action expert 的 `action_encoder` 和 `head` 原本随机初始化，并不来自 Wan 的初始化 backbone。无论 action LoRA 开关如何，这两个模块都保持普通 dense 层，**完整训练其 weight、bias 等全部参数，不注入 LoRA**。新训练会拒绝任何命中它们或其子层的自定义目标，包括通过广泛后缀间接匹配；不会静默删除用户指定的目标。这项例外只针对 action expert 的这两个模块，video 的冻结规则不变。MoT 的 KV-fusion 参数和独立 proprio encoder 继续按原训练策略学习。Trainer 在每次恢复训练模式时重新施加冻结规则，优化器只接收 `requires_grad=True` 的参数。
+| `lora.enabled` | `freeze` | video expert | action expert |
+| --- | --- | --- | --- |
+| `false` | `false` | 全参训练 | 全参训练 |
+| `false` | `true` | 全部参数冻结 | backbone 冻结，skip-prefix 输入输出层全参训练 |
+| `true` | 任意 | base 冻结，只训练 LoRA A/B | backbone base 冻结，训练 LoRA A/B 和 skip-prefix 输入输出层 |
+
+`freeze=true` 与 LoRA 同时开启会输出 warning，effective freeze 为 false；它不会把 adapter 一起冻结，也不会解冻 LoRA 的 base。保留原始 requested flag 用于日志和后续 checkpoint 重建，但只要 LoRA 开启，就执行 LoRA 策略。`freeze` 必须是布尔值。构建日志和 trainer 日志会输出 requested/effective freeze、LoRA 开关以及实际可训练/总参数量。
+
+LoRA 开启时，除下述 action 输入输出层外，base 的所有原始参数（包括 bias、norm 和 modulation）冻结，选定层只训练 LoRA A/B；固定使用 `bias="none"`、普通 LoRA、identity 初始化，不使用 DoRA、RS-LoRA 或 `modules_to_save`。标准初始化的 B 为零，因此注入本身不改变初始模型函数。
+
+Action expert 的 `action_encoder` 和 `head` 原本随机初始化，并不来自 Wan 的初始化 backbone。无论 action LoRA 或 freeze 开关如何，`ACTION_BACKBONE_SKIP_PREFIXES` 指定的这两个模块都保持普通 dense 层，**完整训练其 weight、bias 等全部参数，不注入 LoRA**。新训练会拒绝任何命中它们或其子层的自定义目标，包括通过广泛后缀间接匹配；不会静默删除用户指定的目标。MoT 的 KV-fusion 参数和独立 proprio encoder 继续按原训练策略学习；VAE/text encoder 保持原有冻结行为。Trainer 在每次恢复训练模式时重新施加同一规则，优化器只接收 `requires_grad=True` 的参数。初始化 optimizer 前还检查两个 expert 本身的可训练参数总量，若为 0 则报错，不能仅靠 fusion/proprio 参数绕过；默认 SparseActionDiT 的输入输出层使双 backbone 冻结仍可合法训练。
+
+冻结只控制参数的 `requires_grad`，不对专家整体增加 `no_grad`/`detach`，也不跳过 video loss。梯度仍可经过冻结的 video/action 运算传到 proprio、fusion 和 action 输入输出层；训练/eval 模式和 gradient checkpointing 保持原逻辑。配置作用于本次训练，不改变权重布局或 backbone 初始化文件。
 
 Adapter dtype 跟随 base。PEFT Linear 保持输出 dtype；DeepSpeed BF16 初始化也会转换模型 dtype。本实现不在 ZeRO 分片后强行转换 adapter 参数。
 
@@ -35,7 +48,7 @@ Adapter dtype 跟随 base。PEFT Linear 保持输出 dtype；DeepSpeed BF16 初�
 在仓库根目录运行。下例与用户已有八卡日志一样使用每卡 batch 16、梯度累积 1，即全局 batch 128；这不是论文 RoboTwin 的全局 batch 1,024。需要保持论文 batch 时调整每卡 batch 与累积次数，使其乘以 GPU 数得到 1,024。
 
 ```bash
-# 默认：video 全参训练，action backbone LoRA + 输入输出层全参训练
+# 默认：video/action 均全参训练
 bash scripts/train_zero2.sh 8 \
   task=robotwin_fasterwam_3cam_384_1e-4 \
   batch_size=16 gradient_accumulation_steps=1
@@ -50,11 +63,22 @@ bash scripts/train_zero2.sh 8 \
   model.action_dit_config.lora.r=32 \
   model.action_dit_config.lora.lora_alpha=32
 
-# 原 full-parameter baseline，用于与原实验比较
+# 冻结 video，action 保持默认全参训练
 bash scripts/train_zero2.sh 8 \
   task=robotwin_fasterwam_3cam_384_1e-4 \
-  model.video_dit_config.lora.enabled=false \
-  model.action_dit_config.lora.enabled=false
+  model.video_dit_config.freeze=true
+
+# 冻结两个 backbone；action 输入输出层、fusion、proprio 继续训练
+bash scripts/train_zero2.sh 8 \
+  task=robotwin_fasterwam_3cam_384_1e-4 \
+  model.video_dit_config.freeze=true \
+  model.action_dit_config.freeze=true
+
+# 冻结 video，action 使用 LoRA + 输入输出层全参训练
+bash scripts/train_zero2.sh 8 \
+  task=robotwin_fasterwam_3cam_384_1e-4 \
+  model.video_dit_config.freeze=true \
+  model.action_dit_config.lora.enabled=true
 ```
 
 选择 ZeRO-3 时，把脚本换成 `train_zero3.sh` 并保持 `eval_every=0`。日志仍写入每个实验的 `output_dir/train.log`。日志还会打印两个专家各自的 LoRA 开关、可训练和总参数数目。
@@ -65,7 +89,7 @@ bash scripts/train_zero2.sh 8 \
 model.action_dit_config.lora.target_modules='[self_attn.q,self_attn.k,self_attn.v,self_attn.o]'
 ```
 
-PEFT 0.14.0 的 `all-linear` 简写不适用于这两个原生 `nn.Module`；本实现会明确拒绝字符串、空列表、拼错的目标或非 Linear 目标。两个 backbone 预处理脚本会剥离 `lora` 配置，继续生成 dense 初始化权重，不必重新生成已有 backbone。
+PEFT 0.14.0 的 `all-linear` 简写不适用于这两个原生 `nn.Module`；本实现会明确拒绝字符串、空列表、拼错的目标或非 Linear 目标。两个 backbone 预处理脚本会剥离 `lora` 和 `freeze` 配置，继续生成 dense 初始化权重，不必重新生成已有 backbone。
 
 ## 参数量与训练成本
 
@@ -76,13 +100,14 @@ PEFT 0.14.0 的 `all-linear` 简写不适用于这两个原生 `nn.Module`；本
 | video | 4,999,787,712 | 40,304,640 | 0 |
 | action | 558,896,142 | 11,993,088 | 29,710 |
 
-这里 RoboTwin 的 action dim 为 14、hidden dim 为 1,024；action 可训练参数合计 12,022,798。默认只对 action 开启 LoRA 时，约 50 亿 video 参数仍参与全参训练。两个专家都开启时，共训练 52,297,728 个 adapter 参数及 29,710 个 action I/O 参数，另有 fusion/proprio 参数。冻结 base 可减少参数梯度和优化器状态，但 base 权重仍存在，前向计算和许多中间激活也仍需要；训练吞吐不会按可训练参数的缩小比例提升。
+这里 RoboTwin 的 action dim 为 14、hidden dim 为 1,024；action 开启 LoRA 后可训练参数合计 12,022,798。只对 action 开启 LoRA、video 未冻结时，约 50 亿 video 参数仍参与全参训练。两个专家都开启时，共训练 52,297,728 个 adapter 参数及 29,710 个 action I/O 参数，另有 fusion/proprio 参数。冻结 base 可减少参数梯度和优化器状态，但 base 权重仍存在，前向计算和许多中间激活也仍需要；训练吞吐不会按可训练参数的缩小比例提升。
 
 ## 保存、恢复和评测
 
 普通 `.pt` 仍保留 `mot`、可选 `proprio_encoder`、step/dtype。存在 LoRA 时同时保存**完整 base + adapter 权重**和版本化 LoRA 配置。它不是 adapter-only 文件；随机 action 输入/输出 base 也在文件中，不依赖重新随机初始化恢复。ZeRO-3 使用所有 rank 汇总后的完整 state，保存路径与 ZeRO-1/2 使用同一 metadata 规则。
 
 - **训练恢复完整状态**：`resume=/path/to/checkpoints/state/step_XXXXXX`。保持相同 ZeRO stage、GPU 拓扑、batch/累积及 LoRA 配置。Trainer 在 prepare 前检查 LoRA enabled/rank/alpha/dropout/targets，以及可训练参数名称、形状和优化器顺序。即使改 alpha 不改变张量形状，也会被拒绝。LoRA state 必须包含 `trainable_parameters` 清单；旧版冻结 action I/O 的 state 与新训练参数集合不一致，不能直接恢复其 optimizer。
+- **更改 freeze 开始新实验**：使用兼容的 weights-only `.pt` 作为 `resume`，按本次配置重新创建 optimizer。改变实际可训练参数集合后，不能继续旧 full-state optimizer；启用有效 freeze 时，旧 state 缺失 `trainer_state.json` 或 `trainable_parameters` 清单也会明确报错。保持相同参数集合的完整 state 可以正常恢复。LoRA 已开启时切换被覆盖的 freeze flag 不改变参数集合。
 - **从 LoRA `.pt` 开始新训练**：`resume=/path/to/checkpoints/weights/step_XXXXXX.pt`。使用与 checkpoint 相同的 LoRA 设置；base 和 adapter 都恢复，optimizer/scheduler/step 重新开始。配置不匹配会报错，不会静默忽略 adapter。
 - **从旧 dense `.pt` 开始 LoRA 训练**：保持所需的 LoRA 配置，传入旧 `.pt`。加载器将选定层的 dense 键映射到 `base_layer`，加载全部 base 并将 adapter 重置为零增量；只允许新增 adapter 参数不在旧文件中。旧完整 state 不能直接转换为 LoRA 优化器状态，改用 `.pt` warm start。
 - **评测 LoRA `.pt`**：使用本分支的现有评测入口。默认 `load_checkpoint` 根据文件中的 metadata 配置两个专家，再严格加载全部权重；可恢复与 YAML 默认值不同的 rank/targets。缺失 metadata 的 LoRA 权重或不完整 base 会报错。旧版本代码不知道 PEFT 参数键，不能用它加载新 LoRA checkpoint。

@@ -13,6 +13,10 @@ from numbers import Real
 
 from torch import nn
 
+from fasterwam.utils.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 DEFAULT_LORA_TARGET_MODULES = (
     "self_attn.q", "self_attn.k", "self_attn.v", "self_attn.o",
@@ -22,6 +26,7 @@ DEFAULT_LORA_TARGET_MODULES = (
 DEFAULT_ACTION_LORA_TARGET_MODULES = DEFAULT_LORA_TARGET_MODULES
 _CONFIG_ATTRIBUTE = "_fasterwam_lora_config"
 _BRANCH_ATTRIBUTE = "_fasterwam_lora_branch"
+_FREEZE_ATTRIBUTE = "_fasterwam_freeze"
 _CONFIG_KEYS = {"enabled", "r", "lora_alpha", "lora_dropout", "target_modules"}
 
 
@@ -83,6 +88,53 @@ def split_lora_config(dit_config: Mapping) -> tuple[dict, dict]:
     return clean, normalize_lora_config(clean.pop("lora", None))
 
 
+def split_dit_training_config(dit_config: Mapping) -> tuple[dict, dict, bool]:
+    """Separate training-only options without mutating the caller's config."""
+    clean, lora = split_lora_config(dit_config)
+    freeze = clean.pop("freeze", False)
+    if not isinstance(freeze, bool):
+        raise ValueError("DiT `freeze` must be a boolean.")
+    return clean, lora, freeze
+
+
+def get_expert_freeze(expert: nn.Module) -> bool:
+    """Return the requested freeze flag; active LoRA takes precedence over it."""
+    return getattr(expert, _FREEZE_ATTRIBUTE, False)
+
+
+def configure_expert_freeze(
+    expert: nn.Module, freeze: bool, *, branch: str | None = None,
+) -> None:
+    """Persist the freeze policy for trainer mode resets and checkpoint loads.
+
+    Freeze controls parameter gradients only, not autograd through the expert.
+    Keep the requested flag so later LoRA reconstruction can reapply the policy;
+    its effective value is always false while LoRA is enabled.
+    """
+    if not isinstance(freeze, bool):
+        raise ValueError("DiT `freeze` must be a boolean.")
+    _assert_before_zero_prepare(expert)
+    branch = _branch_of(expert, branch)
+    setattr(expert, _BRANCH_ATTRIBUTE, branch)
+    setattr(expert, _FREEZE_ATTRIBUTE, freeze)
+    apply_expert_trainability(expert, branch=branch)
+    lora_enabled = get_expert_lora_config(expert)["enabled"]
+    if lora_enabled and freeze:
+        logger.warning(
+            "%s DiT: lora.enabled=true takes precedence over freeze=true; "
+            "effective freeze=false, keeping LoRA training and its dense action I/O exception.",
+            branch,
+        )
+    logger.info(
+        "%s DiT policy: lora=%s freeze_requested=%s freeze_effective=%s "
+        "trainable=%d total=%d%s",
+        branch, lora_enabled, freeze, freeze and not lora_enabled,
+        sum(p.numel() for p in expert.parameters() if p.requires_grad),
+        sum(p.numel() for p in expert.parameters()),
+        "; action backbone skip-prefix parameters remain trainable" if branch == "action" else "",
+    )
+
+
 def get_expert_lora_config(expert: nn.Module) -> dict:
     """Return serializable metadata without exposing mutable internal state."""
     return deepcopy(getattr(expert, _CONFIG_ATTRIBUTE, {"enabled": False}))
@@ -97,10 +149,17 @@ def _branch_of(expert: nn.Module, branch: str | None) -> str:
 def _action_io_modules(expert: nn.Module, branch: str | None = None) -> tuple[nn.Module, ...]:
     if _branch_of(expert, branch) != "action":
         return ()
-    return tuple(
-        module for name in ("action_encoder", "head")
-        if isinstance(module := getattr(expert, name, None), nn.Module)
-    )
+    # Use the same list as pretrained-backbone loading, so its randomly
+    # initialized modules remain dense/trainable under both LoRA and freeze.
+    prefixes = getattr(expert, "ACTION_BACKBONE_SKIP_PREFIXES", ("action_encoder.", "head."))
+    modules = []
+    for prefix in prefixes:
+        try:
+            modules.append(expert.get_submodule(prefix.rstrip(".")))
+        except AttributeError:
+            # Other expert implementations need not have SparseActionDiT I/O.
+            continue
+    return tuple(modules)
 
 
 def _assert_before_zero_prepare(expert: nn.Module) -> None:
@@ -181,7 +240,7 @@ def remove_expert_lora(expert: nn.Module) -> nn.Module:
     if hasattr(expert, "peft_config"):
         delattr(expert, "peft_config")
     setattr(expert, _CONFIG_ATTRIBUTE, {"enabled": False})
-    expert.requires_grad_(True)
+    apply_expert_trainability(expert)
     return expert
 
 
@@ -241,13 +300,15 @@ def configure_expert_lora(
 def apply_expert_trainability(
     expert: nn.Module, *, branch: str | None = None, allow_legacy_action_io: bool = False,
 ) -> None:
-    """Train adapters plus dense action I/O, or all parameters when disabled.
+    """Apply LoRA > freeze > full training, always retaining dense action I/O.
 
     Legacy I/O wrappers remain intact for evaluation. Reject their reuse by a
     trainer rather than silently dropping their delta or changing the optimizer.
     """
     if not get_expert_lora_config(expert)["enabled"]:
-        expert.requires_grad_(True)
+        expert.requires_grad_(not get_expert_freeze(expert))
+        for module in _action_io_modules(expert, branch):
+            module.requires_grad_(True)
         return
     layers = _adapter_layers(expert)
     if not layers:

@@ -22,7 +22,7 @@ from .utils.deepspeed_utils import (
 )
 from .utils.fs import ensure_dir
 from .utils.logging_config import get_logger, setup_logging
-from .utils.lora import apply_expert_trainability, get_expert_lora_config
+from .utils.lora import apply_expert_trainability, get_expert_freeze, get_expert_lora_config
 from .utils.lora_checkpoint import get_lora_checkpoint_metadata
 from .utils.pytorch_utils import set_global_seed
 from .utils.samplers import ResumableEpochSampler
@@ -115,6 +115,14 @@ class Wan22Trainer:
         # Freeze non-trainable modules before optimizer/deepspeed initialization.
         # This keeps DiT (+ optional proprio encoder) as trainable when ZeRO builds optimizer state.
         self._apply_dit_only_train_mode(self.model)
+        experts = [
+            expert for branch in ("video", "action")
+            if (expert := getattr(self.model, branch + "_expert", None)) is not None
+        ]
+        # Fusion/proprio parameters must not conceal an empty expert selection.
+        # Check before ZeRO replaces full tensors with rank-local partitions.
+        if experts and not any(p.requires_grad and p.numel() > 0 for expert in experts for p in expert.parameters()):
+            raise ValueError("Video and action DiT together have zero trainable parameters.")
         trainable_named_params = [
             ("dit." + name, parameter)
             for name, parameter in self.model.dit.named_parameters()
@@ -132,6 +140,10 @@ class Wan22Trainer:
             raise ValueError("Training configuration selected no trainable parameters.")
         # Capture before ZeRO replaces full parameter shapes with partitions.
         self.training_lora_config = get_lora_checkpoint_metadata(self.model).get("lora")
+        self.training_has_frozen_expert = any(
+            get_expert_freeze(expert) and not get_expert_lora_config(expert)["enabled"]
+            for expert in experts
+        )
         self.trainable_parameter_spec = [
             {"name": name, "shape": list(parameter.shape)}
             for name, parameter in trainable_named_params
@@ -141,8 +153,9 @@ class Wan22Trainer:
             expert = getattr(self.model, branch + "_expert", None)
             if expert is not None:
                 logger.info(
-                    "%s DiT: lora=%s trainable=%d total=%d",
-                    branch, get_expert_lora_config(expert)["enabled"],
+                    "%s DiT: lora=%s freeze_requested=%s freeze_effective=%s trainable=%d total=%d",
+                    branch, get_expert_lora_config(expert)["enabled"], get_expert_freeze(expert),
+                    get_expert_freeze(expert) and not get_expert_lora_config(expert)["enabled"],
                     sum(p.numel() for p in expert.parameters() if p.requires_grad),
                     sum(p.numel() for p in expert.parameters()),
                 )
@@ -356,8 +369,11 @@ class Wan22Trainer:
             return
         state_file = Path(str(self.resume)) / "trainer_state.json"
         if not state_file.exists():
-            if self.training_lora_config is not None:
-                raise ValueError("LoRA full-state resume requires trainer_state.json with matching LoRA metadata.")
+            if self.training_lora_config is not None or self.training_has_frozen_expert:
+                raise ValueError(
+                    "LoRA/freeze full-state resume requires trainer_state.json with matching "
+                    "trainable_parameters metadata; use a weights-only .pt warm start instead."
+                )
             return
         with state_file.open(encoding="utf-8") as handle:
             saved = json.load(handle)
@@ -366,9 +382,9 @@ class Wan22Trainer:
                 "Full-state resume LoRA configuration mismatch. Restore the original expert "
                 "enabled/r/alpha/dropout/target settings, or use a compatible weights-only .pt warm start."
             )
-        if self.training_lora_config is not None and "trainable_parameters" not in saved:
+        if (self.training_lora_config is not None or self.training_has_frozen_expert) and "trainable_parameters" not in saved:
             raise ValueError(
-                "LoRA full-state resume requires a trainable_parameters manifest to verify "
+                "LoRA/freeze full-state resume requires a trainable_parameters manifest to verify "
                 "optimizer compatibility; use a weights-only .pt warm start instead."
             )
         if "trainable_parameters" in saved and saved["trainable_parameters"] != self.trainable_parameter_spec:
@@ -376,7 +392,7 @@ class Wan22Trainer:
 
     def _set_dit_only_train_mode(self):
         # Match DiffSynth's freeze_except("dit"): only DiT stays trainable/in-train-mode.
-        logger.info("Setting DiT to train mode and freezing other model components.")
+        logger.info("Restoring DiT LoRA/freeze policies and training fusion/proprio; VAE/text encoder stay frozen.")
         model = self.accelerator.unwrap_model(self.model)
         self._apply_dit_only_train_mode(model)
 
@@ -386,7 +402,8 @@ class Wan22Trainer:
         model.requires_grad_(False)
         model.dit.train()
         model.dit.requires_grad_(True)
-        # The broad DiT unfreeze above must not re-enable PEFT base weights.
+        # Reapply expert masks after the broad unfreeze. SparseMoT owns these
+        # same objects; its separate fusion parameters stay trainable.
         for branch in ("video", "action"):
             expert = getattr(model, branch + "_expert", None)
             if expert is not None:

@@ -111,6 +111,8 @@ def _load_model_config(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     # Adapter options are training settings, not dense DiT constructor kwargs.
     video_cfg.pop("lora", None)
     action_cfg.pop("lora", None)
+    video_cfg.pop("freeze", None)
+    action_cfg.pop("freeze", None)
 
     if _is_unresolved_interpolation(video_cfg.get("action_dim")):
         print("[WARN] `video_dit_config.action_dim` is unresolved; defaulting to 7 for preprocessing.")
