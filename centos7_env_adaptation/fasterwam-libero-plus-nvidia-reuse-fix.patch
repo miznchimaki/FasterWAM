@@ -1,0 +1,590 @@
+--- a/scripts/setup/centos7/repair_libero_loader.py
++++ b/scripts/setup/centos7/repair_libero_loader.py
+@@ -16,6 +16,7 @@
+ import json
+ import os
+ from pathlib import Path
++import re
+ import shutil
+ import struct
+ import subprocess
+@@ -153,6 +154,71 @@
+     if not known or actual not in allowed:
+         raise RuntimeError(f'Unmanaged or externally changed graphics file: {path}')
+     return actual
++
++
++def reusable_graphics(root: Path, profile: str):
++    """Read hash-verified donor copies, even when original host paths vanished.
++
++    Return explicit SONAME mappings rather than adding another profile's entire
++    native-libs directory to the target's library search path. Never write donor
++    files or infer a driver's version from a renamed libEGL_nvidia.so.0 alone.
++    """
++    if profile not in ('libero', 'libero-plus'):
++        raise RuntimeError('Invalid graphics donor profile: ' + str(profile))
++    directory = root / '.runtime/centos7' / profile
++    manifest = directory / 'loader-repair.json'
++    if directory.resolve() != directory or manifest.is_symlink():
++        raise RuntimeError('Refusing symlink graphics donor: ' + str(manifest))
++    if not manifest.exists():
++        return {}, {}, []  # A GLVND build alone has no repaired vendor bundle.
++    record = json.loads(manifest.read_text())
++    if (record.get('root') != str(root) or record.get('profile') != profile
++            or record.get('imports_passed') is not True
++            or record.get('graphics_mode') != 'nvidia-glvnd'):
++        raise RuntimeError('Graphics donor has no successful matching repair: ' + str(manifest))
++    native = directory / 'native-libs'
++    if native.resolve() != native:
++        raise RuntimeError('Refusing symlink graphics donor directory: ' + str(native))
++    sources, versions = {}, {}
++    # The dispatch trio is verified separately by the GLVND builder. Python
++    # support libraries must keep using the target base Python's own providers.
++    excluded = {'libEGL.so.1', 'libOpenGL.so.0', 'libGLdispatch.so.0',
++                'libexpat.so.1', 'libz.so.1'}
++    for name, known in record.get('graphics', {}).items():
++        if not name or Path(name).name != name or name in ('.', '..') or '\\' in name:
++            raise RuntimeError('Invalid graphics donor SONAME: ' + repr(name))
++        if name in excluded:
++            continue
++        if known.get('pending'):
++            raise RuntimeError('Graphics donor repair is incomplete: ' + name)
++        path = native / name
++        owned_hash(path, known)
++        if not elf_dso(path):
++            raise RuntimeError('Graphics donor is not x86_64 ELF: ' + str(path))
++        if name.startswith(('libEGL_nvidia', 'libGLX_nvidia', 'libnvidia-')):
++            version = known.get('nvidia_version')
++            match = re.search(r'\.so\.(\d{3,}\.\d+(?:\.\d+)?)$',
++                              Path(known.get('source', '')).name)
++            if match:
++                if version and version != match.group(1):
++                    raise RuntimeError('Conflicting graphics donor driver versions: ' + name)
++                version = match.group(1)
++            if not isinstance(version, str) or not re.fullmatch(r'\d{3,}\.\d+(?:\.\d+)?', version):
++                raise RuntimeError('Cannot verify NVIDIA donor driver version: ' + name)
++            versions[name] = version
++        sources[name] = path
++    if 'libEGL_nvidia.so.0' not in sources:
++        raise RuntimeError('Successful graphics donor has no NVIDIA EGL vendor record.')
++    print('REUSE verified graphics from ' + profile + ': ' + ', '.join(sorted(sources)), flush=True)
++    return sources, versions, record.get('graphics_dirs', [])
++
++
++def graphics_rpath(state, source, reused_sources):
++    # A donor's absolute RPATH points into its own native-libs. Only copy bytes;
++    # give the new DSO the target runtime's search paths, with no donor fallback.
++    old = '$ORIGIN' if source in reused_sources.values() else capture(
++        state['patchelf'], '--print-rpath', str(source))
++    return desired_rpath(state, old)
+ 
+ 
+ def retire_obsolete(native, backups, record, plan, manifest_path):
+@@ -387,17 +453,23 @@
+         raise RuntimeError('Repair manifest belongs to another repository or profile.')
+     extra_dirs = args.graphics_dir or previous.get('graphics_dirs', [])
+     glvnd_dir = args.glvnd_dir or previous.get('glvnd_dir')
+-    if args.reuse_glvnd_from:
++    reuse_profile = args.reuse_glvnd_from
++    if not reuse_profile and not (args.build_glvnd or args.glvnd_dir or args.graphics_dir):
++        reuse_profile = previous.get('graphics_reuse_from')
++    if reuse_profile and (reuse_profile not in ('libero', 'libero-plus') or reuse_profile == profile):
++        raise RuntimeError('Invalid saved graphics donor profile.')
++    reused_sources, reused_versions = {}, {}
++    if reuse_profile:
+         # Verify the source build in a fresh target-profile Python. Never invoke
+         # a source-profile launcher or rewrite any source manifest/library.
+         build_spec = importlib.util.spec_from_file_location(
+             'fasterwam_build_glvnd', Path(__file__).with_name('build_libero_glvnd.py'))
+         builder = importlib.util.module_from_spec(build_spec)
+         build_spec.loader.exec_module(builder)
+-        source_dir = root / '.runtime/centos7' / args.reuse_glvnd_from
++        source_dir = root / '.runtime/centos7' / reuse_profile
+         source_state = json.loads((source_dir / 'state.json').read_text())
+         if (source_dir.resolve() != source_dir or source_state.get('root') != str(root)
+-                or source_state.get('profile') != args.reuse_glvnd_from
++                or source_state.get('profile') != reuse_profile
+                 or source_state.get('private') != str(source_dir / 'python-base')):
+             raise RuntimeError('GLVND source runtime belongs to another repository/profile.')
+         build_base = source_dir / 'private-glvnd'
+@@ -407,13 +479,9 @@
+         glvnd_dir = builder._reusable(build_base / 'build.json', build_base, source_env)
+         if glvnd_dir is None:
+             raise RuntimeError('No verified source GLVND build; use --apply --build-glvnd for the target profile instead.')
+-        source_repair = source_dir / 'loader-repair.json'
+-        if source_repair.is_file():
+-            source_record = json.loads(source_repair.read_text())
+-            if (source_record.get('root') != str(root)
+-                    or source_record.get('profile') != args.reuse_glvnd_from):
+-                raise RuntimeError('GLVND source repair manifest has unexpected provenance.')
+-            extra_dirs = list(dict.fromkeys([*extra_dirs, *source_record.get('graphics_dirs', [])]))
++        if not args.graphics_dir:
++            reused_sources, reused_versions, donor_dirs = reusable_graphics(root, reuse_profile)
++            extra_dirs = list(dict.fromkeys([*extra_dirs, *donor_dirs]))
+     probe('private librt is loadable',
+           'import ctypes,sys; ctypes.CDLL(sys.argv[1]); print(sys.argv[1])',
+           'disable', str(Path(state['loader']).parent / 'librt.so.1'))
+@@ -435,6 +503,10 @@
+     # resume safely and later uv reinstallation can be repaired again.
+     record = dict(previous)
+     record.update(root=str(root), profile=profile, graphics_dirs=extra_dirs)
++    if reuse_profile and not args.graphics_dir:
++        record['graphics_reuse_from'] = reuse_profile
++    else:
++        record.pop('graphics_reuse_from', None)
+     record.setdefault('mujoco', {})
+     record.setdefault('graphics', {})
+     record.setdefault('originals', {})
+@@ -465,7 +537,8 @@
+         glvnd_dir = builder.build_glvnd(state, source_archive=args.glvnd_source,
+                                       meson_wheel=args.meson_wheel, ninja_wheel=args.ninja_wheel)
+     try:
+-        plan = module.plan_graphics(state, extra_dirs, glvnd_dir=glvnd_dir)
++        plan = module.plan_graphics(state, extra_dirs, glvnd_dir=glvnd_dir,
++                                    source_libraries=reused_sources, source_versions=reused_versions)
+     except module.GraphicsError as error:
+         print(f'GRAPHICS NOT READY: {error}', file=sys.stderr)
+         for detail in getattr(error, 'details', []):
+@@ -494,11 +567,12 @@
+         destination = native / name
+         old = record['graphics'].get(name, {})
+         source_hash = digest(source)
++        wanted_rpath = graphics_rpath(state, source, reused_sources)
+         if (destination.exists() and old.get('source_sha256') == source_hash
+                 and old.get('patched_sha256') == digest(destination)
+                 and not has_runpath(destination)
+                 and capture(state['patchelf'], '--print-rpath', str(destination))
+-                == desired_rpath(state, capture(state['patchelf'], '--print-rpath', str(source)))):
++                == wanted_rpath):
+             print(f'UNCHANGED {destination}', flush=True)
+         else:
+             previous_hash = digest(destination) if destination.exists() else None
+@@ -507,7 +581,10 @@
+                                                patched_sha256=patched_hash, pending=True,
+                                                previous_sha256=previous_hash)
+                 atomic_json(manifest_path, record)
+-            patch_copy(source, destination, state, backups, before_publish=before_publish)
++            patch_copy(source, destination, state, backups, before_publish=before_publish,
++                       rpath_override=wanted_rpath)
++        if name in reused_versions:
++            record['graphics'][name]['nvidia_version'] = reused_versions[name]
+         record['graphics'][name].pop('pending', None)
+         record['graphics'][name].pop('previous_sha256', None)
+         atomic_json(manifest_path, record)
+--- a/scripts/setup/centos7/libero_graphics.py
++++ b/scripts/setup/centos7/libero_graphics.py
+@@ -131,19 +131,33 @@
+     return real
+ 
+ 
+-def plan_graphics(state, extra_dirs=(), glvnd_dir=None):
++def plan_graphics(state, extra_dirs=(), glvnd_dir=None, *, source_libraries=None,
++                  source_versions=None):
+     """Return ``{load_name: real_source}`` for a host NVIDIA EGL dependency closure.
+ 
+     ``GraphicsError`` contains any partial inventory and missing libraries. This
+     function only reads files and executes ldconfig -p, patchelf inspection and,
+     when needed, nvidia-smi's driver-version query. It never creates a GL context.
+     The caller must check ownership before replacing existing staging targets.
++    Optional source_libraries maps SONAMEs to individually verified
++    donor-profile copies. The caller verifies their manifest/hash provenance;
++    this planner checks their ELF SONAME and, for NVIDIA libraries, explicit
++    source_versions against the running driver. It never searches the donor
++    directory for other files.
+     """
+     glibc = Path(state["glibc"]).resolve()
+     glibc_lib = Path(state["loader"]).resolve().parent
+     native = (Path(state["private"]).parent / "native-libs").resolve()
+     cache, details = _cache()
+     driver = _driver_version()
++    source_libraries = dict(source_libraries or {})
++    source_versions = dict(source_versions or {})
++    for name in source_libraries:
++        _basename(name)
++        if _glibc_name(name) or name in ("libstdc++.so.6", "libgcc_s.so.1"):
++            raise GraphicsError("Refusing a mapped source with reserved SONAME " + name)
++    if set(source_versions) - set(source_libraries):
++        raise GraphicsError("NVIDIA source version metadata has no corresponding mapped library.")
+     if driver:
+         details.append("Running NVIDIA driver: " + driver)
+     else:
+@@ -244,6 +258,36 @@
+         if support is not None:
+             return support
+         is_nvidia = name.startswith(("libnvidia-", "libEGL_nvidia", "libGLX_nvidia"))
++        if name in source_libraries:
++            real = _readable_elf(source_libraries[name])
++            if real is None:
++                raise GraphicsError("Verified graphics source is no longer readable x86_64 ELF: "
++                                    + str(source_libraries[name]), found=found)
++            if inspect(real, "--print-soname") != name:
++                raise GraphicsError("Unexpected SONAME for mapped graphics source " + str(real)
++                                    + "; expected " + name, found=found)
++            if not is_nvidia:
++                return real
++            version = source_versions.get(name)
++            if not isinstance(version, str) or not re.fullmatch(r"\d{3,}\.\d+(?:\.\d+)?", version):
++                raise GraphicsError("Missing or invalid NVIDIA source version for " + name, found=found)
++            for filename in (name, real.name):
++                match = re.search(r"\.so\.(\d{3,}\.\d+(?:\.\d+)?)$", filename)
++                if match and match.group(1) != version:
++                    raise GraphicsError("NVIDIA source version disagrees with filename " + filename,
++                                        found=found)
++            if driver is None:
++                raise GraphicsError("Cannot reuse NVIDIA sources without a detected running driver version.",
++                                    found=found)
++            if version != driver:
++                raise GraphicsError("NVIDIA source version {} differs from running driver {}: {}".format(
++                    version, driver, real), found=found)
++            if name == "libEGL_nvidia.so.0":
++                # Copies are renamed to SONAME, losing the driver's version.
++                # Keep the verified version, but do not search the donor's
++                # directory: every reused library needs its own verification.
++                vendor_dir, vendor_version = None, version
++            return real
+         candidates = ([vendor_dir / name] if is_nvidia and vendor_dir else [])
+         candidates += [Path(p).expanduser() / name for p in extra_dirs]
+         candidates += cache.get(name, [])
+--- a/scripts/setup/centos7/test_libero_plus_profile.py
++++ b/scripts/setup/centos7/test_libero_plus_profile.py
+@@ -125,6 +125,102 @@
+             with self.assertRaisesRegex(RuntimeError, 'another repository or profile'):
+                 loader.main()
+ 
++    def donor(self):
++        state, directory = self.state('libero')
++        native = directory / 'native-libs'
++        native.mkdir()
++        entries = {}
++        for name, origin in (('libEGL_nvidia.so.0', 'libEGL_nvidia.so.525.85.12'),
++                             ('libnvidia-eglcore.so.525.85.12', 'libnvidia-eglcore.so.525.85.12')):
++            path = native / name
++            path.write_bytes(b'\x7fELF\x02\x01' + b'\0' * 10 + b'\x03\0\x3e\0' + name.encode())
++            entries[name] = {'source': '/no-longer-present/' + origin,
++                             'patched_sha256': loader.digest(path)}
++        record = {'root': str(self.root), 'profile': 'libero', 'graphics_mode': 'nvidia-glvnd',
++                  'imports_passed': True, 'graphics': entries, 'graphics_dirs': []}
++        (directory / 'loader-repair.json').write_text(json.dumps(record))
++        return directory, record
++
++    def test_reuse_without_original_paths_and_without_cross_profile_rpath(self):
++        directory, record = self.donor()
++        before = {p: p.read_bytes() for p in directory.rglob('*') if p.is_file()}
++        sources, versions, dirs = loader.reusable_graphics(self.root, 'libero')
++        self.assertEqual(dirs, [])
++        self.assertEqual(set(sources), set(record['graphics']))
++        self.assertEqual(set(versions.values()), {'525.85.12'})
++        state, target = self.state('libero-plus')
++        rpath = loader.graphics_rpath(state, sources['libEGL_nvidia.so.0'], sources)
++        self.assertIn(str(target / 'native-libs'), rpath)
++        self.assertNotIn(str(directory) + '/', rpath)
++        self.assertEqual(before, {p: p.read_bytes() for p in directory.rglob('*') if p.is_file()})
++
++    def test_reuse_rejects_changed_donor_library(self):
++        directory, record = self.donor()
++        with (directory / 'native-libs/libEGL_nvidia.so.0').open('ab') as stream:
++            stream.write(b'changed')
++        with self.assertRaisesRegex(RuntimeError, 'externally changed'):
++            loader.reusable_graphics(self.root, 'libero')
++
++    def test_reuse_rejects_unfinished_or_foreign_donor(self):
++        directory, record = self.donor()
++        for changes in ({'imports_passed': False}, {'profile': 'libero-plus'},
++                        {'root': '/another/repository'}, {'graphics_mode': 'mesa'}):
++            (directory / 'loader-repair.json').write_text(json.dumps(dict(record, **changes)))
++            with self.assertRaisesRegex(RuntimeError, 'no successful matching repair'):
++                loader.reusable_graphics(self.root, 'libero')
++
++    def test_reuse_requires_driver_version_provenance(self):
++        directory, record = self.donor()
++        record['graphics']['libEGL_nvidia.so.0']['source'] = '/unknown/libEGL_nvidia.so.0'
++        (directory / 'loader-repair.json').write_text(json.dumps(record))
++        with self.assertRaisesRegex(RuntimeError, 'Cannot verify NVIDIA donor driver version'):
++            loader.reusable_graphics(self.root, 'libero')
++
++    def test_plain_apply_reuses_saved_donor(self):
++        directory, record = self.donor()
++        state, target = self.state('libero-plus')
++        state['patchelf'] = '/unused/patchelf'
++        (target / 'state.json').write_text(json.dumps(state))
++        package = Path(state['venv']) / 'lib/python3.10/site-packages/mujoco'
++        package.mkdir(parents=True)
++        obj = package / 'libmujoco.so.3.3.2'
++        obj.write_bytes((directory / 'native-libs/libEGL_nvidia.so.0').read_bytes())
++        fixture_builder = self.root / 'fake_builder.py'
++        fixture_builder.write_text('def _reusable(manifest, base, env):\n    return base / "v-test/lib"\n')
++        fixture_graphics = self.root / 'fake_graphics.py'
++        fixture_graphics.write_text('class GraphicsError(RuntimeError): pass\n'
++                                   'def plan_graphics(state, extra_dirs, **kwargs):\n'
++                                   '    assert kwargs["source_versions"]["libEGL_nvidia.so.0"] == "525.85.12"\n'
++                                   '    return kwargs["source_libraries"]\n')
++        original_spec = importlib.util.spec_from_file_location
++        def spec(name, path):
++            return original_spec(name, fixture_builder if name == 'fasterwam_build_glvnd' else fixture_graphics)
++        def copy(source, destination, state, backups, before_publish=None, rpath_override=None):
++            data = source.read_bytes()
++            if before_publish:
++                before_publish(loader.digest(source))
++            destination.write_bytes(data)
++            if source != destination:
++                self.assertNotIn(str(directory) + '/', rpath_override)
++            return loader.digest(destination)
++        before = {p: p.read_bytes() for p in directory.rglob('*') if p.is_file()}
++        for extra in (['--reuse-glvnd-from', 'libero'], []):
++            argv = ['repair', '--root', str(self.root), '--profile', 'libero-plus', '--apply', *extra]
++            with mock.patch.object(sys, 'argv', argv), mock.patch.object(sys, 'prefix', state['venv']), \
++                    mock.patch.object(sys, 'base_prefix', state['private']), \
++                    mock.patch.object(loader.importlib.metadata, 'version', return_value='3.3.2'), \
++                    mock.patch.object(loader.importlib.util, 'spec_from_file_location', side_effect=spec), \
++                    mock.patch.object(loader, 'patch_copy', side_effect=copy), \
++                    mock.patch.object(loader, 'has_runpath', return_value=False), \
++                    mock.patch.object(loader, 'capture', return_value='/old-rpath'), \
++                    mock.patch.object(loader, 'probe'), mock.patch.object(loader, 'repair_python_support'), \
++                    mock.patch.object(loader.subprocess, 'run'):
++                self.assertEqual(loader.main(), 0)
++            saved = json.loads((target / 'loader-repair.json').read_text())
++            self.assertEqual(saved['graphics_reuse_from'], 'libero')
++            self.assertEqual(saved['graphics']['libEGL_nvidia.so.0']['nvidia_version'], '525.85.12')
++        self.assertEqual(before, {p: p.read_bytes() for p in directory.rglob('*') if p.is_file()})
++
+     def test_resume_uses_only_target_launcher(self):
+         state, directory = self.state('libero-plus')
+         script = self.root / 'scripts/setup/repair_centos7_libero_plus.sh'
+--- /dev/null
++++ b/scripts/setup/centos7/test_libero_graphics_reuse.py
+@@ -0,0 +1,181 @@
++#!/usr/bin/env python3
++"""CPU-only regressions for exact, read-only NVIDIA donor-library discovery.
++
++Fixtures have real ELF headers; the ELF inspector and host inventory are faked
++so these tests do not depend on a particular machine's GPU, driver, or patchelf.
++Run: python -m unittest discover -s scripts/setup/centos7 -p test_libero_graphics_reuse.py
++"""
++from __future__ import annotations
++
++import importlib.util
++from pathlib import Path
++import struct
++import subprocess
++import tempfile
++import unittest
++from unittest import mock
++
++
++SPEC = importlib.util.spec_from_file_location(
++    'fasterwam_graphics_under_test', Path(__file__).with_name('libero_graphics.py'))
++graphics = importlib.util.module_from_spec(SPEC)
++SPEC.loader.exec_module(graphics)
++
++
++class GraphicsReuseTests(unittest.TestCase):
++    VERSION = '525.85.12'
++
++    def setUp(self):
++        temporary = tempfile.TemporaryDirectory(prefix='fasterwam-graphics-reuse-')
++        self.addCleanup(temporary.cleanup)
++        self.root = Path(temporary.name).resolve()
++        self.dsos = {}
++        self.glvnd = self.root / 'verified-glvnd/lib'
++        self.donor = self.root / 'libero/native-libs'
++        self.state = {
++            'glibc': str(self.root / 'glibc'),
++            'loader': str(self.root / 'glibc/lib/ld-linux-x86-64.so.2'),
++            'private': str(self.root / 'libero-plus/python-base'),
++            'rpath': [str(self.root / 'libero-plus/native-libs')],
++            'patchelf': 'fixture-patchelf',
++        }
++        self.elf(self.root / 'glibc/lib/libc.so.6', 'libc.so.6')
++        self.elf(self.glvnd / 'libGLdispatch.so.0', 'libGLdispatch.so.0')
++        self.elf(self.glvnd / 'libEGL.so.1', 'libEGL.so.1',
++                 ['libGLdispatch.so.0'], marker=b'__EGL_VENDOR_LIBRARY_FILENAMES')
++        self.elf(self.glvnd / 'libOpenGL.so.0', 'libOpenGL.so.0', ['libGLdispatch.so.0'])
++        self.vendor = self.elf(self.donor / 'libEGL_nvidia.so.0', 'libEGL_nvidia.so.0',
++                               ['libnvidia-glsi.so.' + self.VERSION, 'libc.so.6'])
++        self.core_name = 'libnvidia-eglcore.so.' + self.VERSION
++        self.glsi_name = 'libnvidia-glsi.so.' + self.VERSION
++        self.core = self.elf(self.donor / self.core_name, self.core_name, ['libc.so.6'])
++        self.glsi = self.elf(self.donor / self.glsi_name, self.glsi_name, ['libc.so.6'])
++        self.sources = {
++            'libEGL_nvidia.so.0': self.vendor,
++            self.core_name: self.core,
++            self.glsi_name: self.glsi,
++        }
++        self.versions = {name: self.VERSION for name in self.sources}
++        self.cache = {}
++        real_reader = graphics._readable_elf
++
++        def fixture_reader(path):
++            # Never inspect unrelated host libraries even if the test machine
++            # happens to have a working NVIDIA installation.
++            path = Path(path).resolve()
++            return real_reader(path) if path in self.dsos else None
++
++        self.patches = [
++            mock.patch.object(graphics, '_cache', side_effect=lambda: (self.cache, [])),
++            mock.patch.object(graphics, '_driver_version', return_value=self.VERSION),
++            mock.patch.object(graphics, '_readable_elf', side_effect=fixture_reader),
++            mock.patch.object(graphics, '_run', side_effect=self.inspect),
++        ]
++        for patch in self.patches:
++            patch.start()
++            self.addCleanup(patch.stop)
++
++    def elf(self, path, soname, needed=(), *, marker=b''):
++        path.parent.mkdir(parents=True, exist_ok=True)
++        header = bytearray(20)
++        header[:6] = b'\x7fELF\x02\x01'
++        struct.pack_into('<HH', header, 16, 3, 62)
++        path.write_bytes(header + marker)
++        self.dsos[path] = {'soname': soname, 'needed': list(needed)}
++        return path
++
++    def inspect(self, argv, timeout=20):
++        self.assertEqual(argv[0], 'fixture-patchelf')
++        record = self.dsos[Path(argv[2])]
++        if argv[1] == '--print-soname':
++            output = record['soname']
++        elif argv[1] == '--print-needed':
++            output = '\n'.join(record['needed'])
++        else:
++            self.fail('Unexpected inspector invocation: ' + repr(argv))
++        return subprocess.CompletedProcess(argv, 0, output, '')
++
++    def plan(self, **kwargs):
++        return graphics.plan_graphics(
++            self.state, glvnd_dir=self.glvnd,
++            source_libraries=self.sources, source_versions=self.versions, **kwargs)
++
++    def test_exact_verified_donor_sources_work_without_host_vendor(self):
++        before = {path: path.read_bytes() for path in self.sources.values()}
++        result = self.plan()
++        for name, path in self.sources.items():
++            self.assertEqual(result[name], path)
++        self.assertEqual(before, {path: path.read_bytes() for path in self.sources.values()})
++        self.assertEqual(len(result), 6)
++
++    def test_wrong_running_driver_rejected(self):
++        with mock.patch.object(graphics, '_driver_version', return_value='535.104.05'):
++            with self.assertRaisesRegex(graphics.GraphicsError, 'differs from running driver'):
++                self.plan()
++
++    def test_unknown_running_driver_rejected_for_donor_sources(self):
++        with mock.patch.object(graphics, '_driver_version', return_value=None):
++            with self.assertRaisesRegex(graphics.GraphicsError, 'without a detected running driver'):
++                self.plan()
++
++    def test_missing_and_invalid_version_metadata_rejected(self):
++        for value in (None, '', '525', 525, 'not-a-version'):
++            with self.subTest(value=value):
++                self.versions['libEGL_nvidia.so.0'] = value
++                with self.assertRaisesRegex(graphics.GraphicsError, 'Missing or invalid NVIDIA source version'):
++                    self.plan()
++
++    def test_wrong_versioned_filename_rejected(self):
++        self.versions[self.core_name] = '535.104.05'
++        with self.assertRaisesRegex(graphics.GraphicsError, 'disagrees with filename'):
++            self.plan()
++
++    def test_wrong_mapped_soname_rejected(self):
++        self.dsos[self.vendor]['soname'] = 'libGL.so.1'
++        with self.assertRaisesRegex(graphics.GraphicsError, 'Unexpected SONAME'):
++            self.plan()
++
++    def test_unreadable_mapped_file_rejected(self):
++        self.vendor.unlink()
++        with self.assertRaisesRegex(graphics.GraphicsError, 'no longer readable'):
++            self.plan()
++
++    def test_unlisted_donor_companion_is_not_discovered_from_its_directory(self):
++        del self.sources[self.core_name]
++        del self.versions[self.core_name]
++        # The file still exists next to the verified donor vendor. It must not
++        # enter the plan without independent verification/mapping.
++        self.assertTrue(self.core.is_file())
++        with self.assertRaisesRegex(graphics.GraphicsError, 'NVIDIA EGL runtime companion'):
++            self.plan()
++
++    def test_unlisted_needed_dependency_is_not_discovered_from_donor_directory(self):
++        del self.sources[self.glsi_name]
++        del self.versions[self.glsi_name]
++        self.assertTrue(self.glsi.is_file())
++        with self.assertRaisesRegex(graphics.GraphicsError, 'dependency closure is incomplete'):
++            self.plan()
++
++    def test_exact_non_nvidia_dependency_mapping_is_supported(self):
++        name = 'libfixture-helper.so.1'
++        dependency = self.elf(self.donor / name, name, ['libc.so.6'])
++        self.sources[name] = dependency
++        self.dsos[self.vendor]['needed'].append(name)
++        result = self.plan()
++        self.assertEqual(result[name], dependency)
++
++    def test_original_host_discovery_api_without_source_maps_is_unchanged(self):
++        host = self.root / 'host-driver'
++        vendor = self.elf(host / ('libEGL_nvidia.so.' + self.VERSION), 'libEGL_nvidia.so.0',
++                          [self.glsi_name, 'libc.so.6'])
++        core = self.elf(host / self.core_name, self.core_name, ['libc.so.6'])
++        glsi = self.elf(host / self.glsi_name, self.glsi_name, ['libc.so.6'])
++        self.cache['libEGL_nvidia.so.0'] = [vendor]
++        result = graphics.plan_graphics(self.state, glvnd_dir=self.glvnd)
++        self.assertEqual(result['libEGL_nvidia.so.0'], vendor)
++        self.assertEqual(result[self.core_name], core)
++        self.assertEqual(result[self.glsi_name], glsi)
++
++
++if __name__ == '__main__':
++    unittest.main()
+--- a/scripts/setup/centos7/LIBERO_PLUS.zh-CN.md
++++ b/scripts/setup/centos7/LIBERO_PLUS.zh-CN.md
+@@ -28,7 +28,8 @@
+    `opencv-python-headless==4.11.0.86`；重装只涉及 OpenCV，使用清华镜像。
+ 2. 按 `--profile libero-plus` 修补该环境自己的 MuJoCo DSO，配置私有
+    GLVND/NVIDIA EGL 库及 vendor JSON。默认只读验证已有 LIBERO GLVND
+-   构建，再复制到 Plus 自己的 `native-libs` 并设置 Plus 的 RPATH。
++   构建及成功修复后的 NVIDIA 库副本，核对 SHA256、来源和当前驱动版本，
++   再复制到 Plus 自己的 `native-libs` 并设置 Plus 的 RPATH。
+    不复制 LIBERO 的整个 runtime 或修复记录，不修改其动态库。
+ 3. 构建 Plus 专用 ImageMagick/MagickWand，支持 LIBERO-Plus 实际使用的
+    `PNG -> MagickMotionBlurImage -> PNG/OpenCV`，并运行该操作的 smoke test。
+@@ -45,6 +46,41 @@
+ 
+ 重复执行会校验并复用成功的原生构建。若仅最后 doctor 失败，保留日志，
+ 不要删除 `.runtime`、`.venvs`、`assets.zip` 或整套 LIBERO-Plus 源码。
++
++## 恢复日志中的 libGL 和 NVIDIA EGL 错误
++
++如果开头的 `DIAGNOSTIC OpenCV before repair` 有 `libGL.so.1: ... Permission denied`，
++而随后出现 `PASS OpenCV: ... GUI=NONE, resize OK`，表示 OpenCV 已经修好。
++不要为这条历史诊断去 chmod 系统库或再次安装 GUI OpenCV。
++
++若最后是 `GRAPHICS NOT READY` / `MISSING libEGL_nvidia.so.0`，则是另一项
++NVIDIA EGL 库发现失败。GLVND 构建通过并不代表厂商驱动库已经找到。
++旧恢复脚本只复用了 GLVND 三个分发库和手工指定的搜索目录；当原系统路径
++不可读、SONAME 链接缺失或不在搜索范围时，会漏掉原 LIBERO 已修好的副本。
++具体系统路径失败原因不能仅由 `MISSING` 判断。
++
++现在 `--reuse-glvnd-from libero` 会读取源 profile 成功的 `loader-repair.json`，
++验证已管理库副本的 SHA256，并结合原始文件名记录核对 NVIDIA 驱动版本。
++即使原始系统文件路径已不可用，也能只读复用可验证的私有副本。复制后的
++NVIDIA 库使用目标环境的 RPATH；不会把 LIBERO 的整个 native-libs 加入搜索路径。
++目标记录会保存来源，后续不带 reuse 参数的 `--profile libero-plus --apply`
++也会继续验证和使用该来源。显式 `--graphics-dir` 会优先采用指定目录。
++
++应用增量修复后，重新执行同一恢复入口即可；推荐换日志文件名：
++
++```bash
++(
++  set -o pipefail
++  MAX_JOBS=2 bash scripts/setup/repair_centos7_libero_plus.sh \
++    2>&1 | tee .runtime/centos7/libero-plus/repair-plus-vendor.log
++)
++```
++
++预期新增 `REUSE verified graphics from libero:`，随后有
++`PASS fresh dlopen libEGL_nvidia.so.0` 和 `PASS fresh EGL MuJoCo and robosuite imports`。
++入口会继续 ImageMagick 构建/验证及最终 doctor。库副本被改动、源修复未成功，
++或驱动版本不一致时会停止并给出错误；保留完整日志，不跳过这些检查。
++本修复不下载或安装 NVIDIA 驱动，也不修改源 LIBERO 环境。
+ 
+ ## ImageMagick 的隔离方式
+ 

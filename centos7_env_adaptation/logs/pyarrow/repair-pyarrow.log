@@ -1,0 +1,174 @@
+=== PyArrow apply: core ===
+Profile: core; pyarrow==23.0.0; 37 shared objects
+BEFORE fresh PyArrow (diagnostic): exit=1
+Traceback (most recent call last):
+  File "<string>", line 5, in <module>
+  File "/mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/__init__.py", line 59, in <module>
+    from pyarrow.lib import (BuildInfo, CppBuildInfo, RuntimeInfo, set_timezone_db_path,
+ImportError: librt.so.1: cannot open shared object file: Permission denied
+CHECK private librt before any ELF changes: exit=0
+PASS absolute private librt: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/librt.so.1
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_acero.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_azurefs.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_compute.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_csv.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_dataset.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_dataset_orc.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_dataset_parquet.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_dataset_parquet_encryption.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_feather.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_flight.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_fs.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_gcsfs.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_hdfs.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_json.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_orc.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_parquet.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_parquet_encryption.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_pyarrow_cpp_tests.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_s3fs.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/_substrait.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/lib.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/libarrow.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/libarrow_acero.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/libarrow_compute.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/libarrow_dataset.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/libarrow_flight.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/libarrow_python.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/libarrow_python.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/libarrow_python.so.2300.0.0
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/libarrow_python_flight.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/libarrow_python_flight.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/libarrow_python_flight.so.2300.0.0
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/libarrow_python_parquet_encryption.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/libarrow_python_parquet_encryption.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/libarrow_python_parquet_encryption.so.2300.0.0
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/libarrow_substrait.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/pyarrow/libparquet.so.2300
+AFTER fresh PyArrow: exit=0
+FASTERWAM_PYARROW_PROBE={"version": "23.0.0", "prefix": "/mnt/lustre/lizongshu/projects/FasterWAM/.venv", "executable": "/mnt/lustre/lizongshu/projects/FasterWAM/.venv/bin/python"}
+mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/ld-linux-x86-64.so.2
+mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/libc.so.6
+mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/libdl.so.2
+mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/libpthread.so.0
+mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/librt.so.1
+PASS PyArrow repair [core]
+Backup directory: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/pyarrow-repair-backups
+Repair journal: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/pyarrow-repair.json
+PASS profile core
+=== PyArrow apply: libero ===
+Profile: libero; pyarrow==23.0.0; 37 shared objects
+BEFORE fresh PyArrow (diagnostic): exit=1
+Traceback (most recent call last):
+  File "<string>", line 5, in <module>
+  File "/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/__init__.py", line 59, in <module>
+    from pyarrow.lib import (BuildInfo, CppBuildInfo, RuntimeInfo, set_timezone_db_path,
+ImportError: librt.so.1: cannot open shared object file: Permission denied
+CHECK private librt before any ELF changes: exit=0
+PASS absolute private librt: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/librt.so.1
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_acero.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_azurefs.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_compute.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_csv.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_dataset.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_dataset_orc.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_dataset_parquet.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_dataset_parquet_encryption.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_feather.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_flight.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_fs.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_gcsfs.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_hdfs.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_json.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_orc.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_parquet.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_parquet_encryption.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_pyarrow_cpp_tests.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_s3fs.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/_substrait.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/lib.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/libarrow.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/libarrow_acero.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/libarrow_compute.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/libarrow_dataset.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/libarrow_flight.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/libarrow_python.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/libarrow_python.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/libarrow_python.so.2300.0.0
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/libarrow_python_flight.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/libarrow_python_flight.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/libarrow_python_flight.so.2300.0.0
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/libarrow_python_parquet_encryption.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/libarrow_python_parquet_encryption.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/libarrow_python_parquet_encryption.so.2300.0.0
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/libarrow_substrait.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/lib/python3.10/site-packages/pyarrow/libparquet.so.2300
+AFTER fresh PyArrow: exit=0
+FASTERWAM_PYARROW_PROBE={"version": "23.0.0", "prefix": "/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero", "executable": "/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero/bin/python"}
+mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/ld-linux-x86-64.so.2
+mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/libc.so.6
+mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/libdl.so.2
+mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/libpthread.so.0
+mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/librt.so.1
+PASS PyArrow repair [libero]
+Backup directory: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero/pyarrow-repair-backups
+Repair journal: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero/pyarrow-repair.json
+PASS profile libero
+=== PyArrow apply: libero-plus ===
+Profile: libero-plus; pyarrow==23.0.0; 37 shared objects
+BEFORE fresh PyArrow (diagnostic): exit=1
+Traceback (most recent call last):
+  File "<string>", line 5, in <module>
+  File "/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/__init__.py", line 59, in <module>
+    from pyarrow.lib import (BuildInfo, CppBuildInfo, RuntimeInfo, set_timezone_db_path,
+ImportError: librt.so.1: cannot open shared object file: Permission denied
+CHECK private librt before any ELF changes: exit=0
+PASS absolute private librt: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/librt.so.1
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_acero.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_azurefs.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_compute.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_csv.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_dataset.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_dataset_orc.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_dataset_parquet.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_dataset_parquet_encryption.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_feather.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_flight.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_fs.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_gcsfs.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_hdfs.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_json.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_orc.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_parquet.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_parquet_encryption.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_pyarrow_cpp_tests.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_s3fs.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/_substrait.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/lib.cpython-310-x86_64-linux-gnu.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/libarrow.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/libarrow_acero.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/libarrow_compute.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/libarrow_dataset.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/libarrow_flight.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/libarrow_python.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/libarrow_python.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/libarrow_python.so.2300.0.0
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/libarrow_python_flight.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/libarrow_python_flight.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/libarrow_python_flight.so.2300.0.0
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/libarrow_python_parquet_encryption.so
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/libarrow_python_parquet_encryption.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/libarrow_python_parquet_encryption.so.2300.0.0
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/libarrow_substrait.so.2300
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/pyarrow/libparquet.so.2300
+AFTER fresh PyArrow: exit=0
+FASTERWAM_PYARROW_PROBE={"version": "23.0.0", "prefix": "/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus", "executable": "/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/bin/python"}
+mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/ld-linux-x86-64.so.2
+mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/libc.so.6
+mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/libdl.so.2
+mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/libpthread.so.0
+mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/librt.so.1
+PASS PyArrow repair [libero-plus]
+Backup directory: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/pyarrow-repair-backups
+Repair journal: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/pyarrow-repair.json
+PASS profile libero-plus

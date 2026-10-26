@@ -1,0 +1,241 @@
+patchelf 0.18.0
+uv 0.12.15 (x86_64-unknown-linux-gnu)
+{
+  "python": "/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/python-base/bin/python3.10",
+  "venv": "/mnt/lustre/lizongshu/projects/FasterWAM/.venv",
+  "glibc": "glibc 2.35",
+  "state": "/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/state.json"
+}
+    Python: /mnt/lustre/lizongshu/projects/FasterWAM/.venv/bin/python
+    prefix: /mnt/lustre/lizongshu/projects/FasterWAM/.venv
+    base: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/python-base
+    glibc: 2.35
+    PT_INTERP: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/ld-linux-x86-64.so.2
+    mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/ld-linux-x86-64.so.2, /mnt/lustre/lizongshu/depends/glibc-2.35/lib/libc.so.6
+PASS private runtime / ELF / environment
+    child: /mnt/lustre/lizongshu/projects/FasterWAM/.venv/bin/python (glibc 2.35)
+PASS Python and system-shell subprocesses
+PASS multiprocessing spawn
+Doctor finished: 3 passed, 0 failed.
+Resolved 103 packages in 1ms
+   Building fasterwam @ file:///mnt/lustre/lizongshu/projects/FasterWAM
+Downloading torchvision (8.3MiB)
+Downloading torch (991.2MiB)
+Downloading botocore (12.7MiB)
+Downloading torchcodec (1.4MiB)
+Downloading numpy (17.4MiB)
+Downloading pyarrow (45.3MiB)
+Downloading pillow (6.7MiB)
+Downloading imageio-ffmpeg (28.1MiB)
+Downloading transformers (9.5MiB)
+Downloading wandb (21.8MiB)
+Downloading pandas (12.5MiB)
+Downloading av (37.9MiB)
+Downloading modelscope (5.8MiB)
+Downloading h5py (4.3MiB)
+ Downloaded torchcodec
+Downloading pygments (1.2MiB)
+   Building antlr4-python3-runtime==4.9.3
+Downloading networkx (1.6MiB)
+Downloading nvidia-cuda-cupti-cu12 (9.8MiB)
+Downloading nvidia-cuda-nvrtc-cu12 (83.9MiB)
+Downloading nvidia-cublas-cu12 (581.4MiB)
+Downloading nvidia-cufft-cu12 (184.2MiB)
+Downloading nvidia-cudnn-cu12 (693.2MiB)
+Downloading nvidia-cusolver-cu12 (248.3MiB)
+Downloading nvidia-curand-cu12 (60.7MiB)
+Downloading nvidia-cufile-cu12 (1.1MiB)
+ Downloaded torchvision
+Downloading nvidia-cusparse-cu12 (278.5MiB)
+Downloading nvidia-cusparselt-cu12 (149.5MiB)
+Downloading nvidia-nccl-cu12 (192.0MiB)
+Downloading nvidia-nvjitlink-cu12 (37.4MiB)
+Downloading sympy (6.0MiB)
+Downloading pydantic-core (2.0MiB)
+Downloading aiohttp (1.6MiB)
+Downloading tokenizers (3.0MiB)
+Downloading triton (148.4MiB)
+ Downloaded pygments
+ Downloaded nvidia-cufile-cu12
+   Building deepspeed==0.18.5
+ Downloaded networkx
+ Downloaded aiohttp
+ Downloaded pydantic-core
+ Downloaded tokenizers
+ Downloaded h5py
+      Built fasterwam @ file:///mnt/lustre/lizongshu/projects/FasterWAM
+      Built antlr4-python3-runtime==4.9.3
+ Downloaded modelscope
+ Downloaded sympy
+ Downloaded pillow
+ Downloaded transformers
+ Downloaded nvidia-cuda-cupti-cu12
+ Downloaded pandas
+ Downloaded botocore
+      Built deepspeed==0.18.5
+ Downloaded numpy
+ Downloaded wandb
+ Downloaded imageio-ffmpeg
+ Downloaded nvidia-nvjitlink-cu12
+ Downloaded av
+ Downloaded pyarrow
+ Downloaded nvidia-curand-cu12
+ Downloaded torch
+ Downloaded nvidia-cuda-nvrtc-cu12
+ Downloaded triton
+ Downloaded nvidia-cusparselt-cu12
+ Downloaded nvidia-cufft-cu12
+ Downloaded nvidia-nccl-cu12
+ Downloaded nvidia-cusolver-cu12
+ Downloaded nvidia-cusparse-cu12
+ Downloaded nvidia-cublas-cu12
+ Downloaded nvidia-cudnn-cu12
+Prepared 102 packages in 1m 53s
+Installed 102 packages in 24.02s
+ + accelerate==1.12.0
+ + aiohappyeyeballs==2.7.1
+ + aiohttp==3.14.3
+ + aiosignal==1.4.0
+ + annotated-types==0.8.0
+ + antlr4-python3-runtime==4.9.3
+ + async-timeout==5.0.1
+ + attrs==26.1.0
+ + av==16.0.1
+ + boto3==1.35.99
+ + botocore==1.35.99
+ + certifi==2026.7.22
+ + charset-normalizer==3.4.9
+ + click==8.4.2
+ + datasets==3.6.0
+ + deepspeed==0.18.5
+ + dill==0.3.8
+ + einops==0.8.1
+ + fasterwam==0.1.0 (from file:///mnt/lustre/lizongshu/projects/FasterWAM)
+ + filelock==3.32.2
+ + frozenlist==1.8.0
+ + fsspec==2025.3.0
+ + ftfy==6.3.1
+ + gitdb==4.0.12
+ + gitpython==3.1.45
+ + h5py==3.14.0
+ + hjson==3.1.0
+ + huggingface-hub==0.29.2
+ + hydra-core==1.3.2
+ + idna==3.18
+ + imageio==2.37.0
+ + imageio-ffmpeg==0.6.0
+ + jinja2==3.1.6
+ + jmespath==1.1.0
+ + jsonlines==4.0.0
+ + markdown-it-py==4.2.0
+ + markupsafe==3.0.3
+ + mdurl==0.1.2
+ + modelscope==1.34.0
+ + mpmath==1.3.0
+ + msgpack==1.2.1
+ + multidict==6.7.1
+ + multiprocess==0.70.16
+ + networkx==3.4.2
+ + ninja==1.13.0
+ + numpy==1.26.4
+ + nvidia-cublas-cu12==12.8.3.14
+ + nvidia-cuda-cupti-cu12==12.8.57
+ + nvidia-cuda-nvrtc-cu12==12.8.61
+ + nvidia-cuda-runtime-cu12==12.8.57
+ + nvidia-cudnn-cu12==9.7.1.26
+ + nvidia-cufft-cu12==11.3.3.41
+ + nvidia-cufile-cu12==1.13.0.11
+ + nvidia-curand-cu12==10.3.9.55
+ + nvidia-cusolver-cu12==11.7.2.55
+ + nvidia-cusparse-cu12==12.5.7.53
+ + nvidia-cusparselt-cu12==0.6.3
+ + nvidia-nccl-cu12==2.26.2
+ + nvidia-nvjitlink-cu12==12.8.61
+ + nvidia-nvtx-cu12==12.8.55
+ + omegaconf==2.3.0
+ + packaging==25.0
+ + pandas==2.2.3
+ + pillow==12.0.0
+ + platformdirs==4.11.0
+ + propcache==0.5.2
+ + protobuf==6.33.6
+ + psutil==7.2.2
+ + py-cpuinfo==9.0.0
+ + pyarrow==23.0.0
+ + pydantic==2.13.4
+ + pydantic-core==2.46.4
+ + pygments==2.20.0
+ + python-dateutil==2.9.0.post0
+ + pytz==2026.3.post1
+ + pyyaml==6.0.2
+ + regex==2025.11.3
+ + requests==2.34.2
+ + rich==14.2.0
+ + s3transfer==0.10.4
+ + safetensors==0.5.3
+ + sentry-sdk==2.66.1
+ + setuptools==83.0.0
+ + six==1.17.0
+ + smmap==5.0.3
+ + sympy==1.14.0
+ + termcolor==2.5.0
+ + tokenizers==0.21.4
+ + torch==2.7.1+cu128
+ + torchcodec==0.5+cu128
+ + torchvision==0.22.1+cu128
+ + tqdm==4.66.5
+ + transformers==4.49.0
+ + triton==3.3.1
+ + typing-extensions==4.15.0
+ + typing-inspection==0.4.2
+ + tzdata==2026.3
+ + urllib3==2.7.0
+ + wandb==0.23.1
+ + wcwidth==0.8.2
+ + xxhash==3.8.1
+ + yarl==1.24.5
+Patched 9 environment-owned native executables; report: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/patched-native.json
+SKIP actual video decoding: supply --video /path/to/video.mp4 to test it.
+    Python: /mnt/lustre/lizongshu/projects/FasterWAM/.venv/bin/python
+    prefix: /mnt/lustre/lizongshu/projects/FasterWAM/.venv
+    base: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/python-base
+    glibc: 2.35
+    PT_INTERP: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/ld-linux-x86-64.so.2
+    mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/ld-linux-x86-64.so.2, /mnt/lustre/lizongshu/depends/glibc-2.35/lib/libc.so.6
+PASS private runtime / ELF / environment
+    child: /mnt/lustre/lizongshu/projects/FasterWAM/.venv/bin/python (glibc 2.35)
+PASS Python and system-shell subprocesses
+PASS multiprocessing spawn
+FAIL pinned packages / native imports: RuntimeError: torchcodec: Could not load libtorchcodec. Likely causes:
+          1. FFmpeg is not properly installed in your environment. We support
+             versions 4, 5, 6 and 7.
+          2. The PyTorch version (2.7.1+cu128) is not compatible with
+             this version of TorchCodec. Refer to the version compatibility
+             table:
+             https://github.com/pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec.
+          3. Another runtime dependency; see exceptions below.
+        The following exceptions were raised as we tried to load libtorchcodec:
+        
+[start of libtorchcodec loading traceback]
+FFmpeg version 7: libnppicc.so.12: cannot open shared object file: No such file or directory
+FFmpeg version 6: libnppicc.so.12: cannot open shared object file: No such file or directory
+FFmpeg version 5: libnppicc.so.12: cannot open shared object file: No such file or directory
+FFmpeg version 4: libnppicc.so.12: cannot open shared object file: No such file or directory
+[end of libtorchcodec loading traceback].
+FAIL native helper execution: RuntimeError: Native helper execution failed:
+/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/core/bin/ffmpeg: exit -11: 
+/mnt/lustre/lizongshu/projects/FasterWAM/.venv/bin/ninja: exit -11: 
+/mnt/lustre/lizongshu/projects/FasterWAM/.venv/lib/python3.10/site-packages/triton/backends/nvidia/bin/ptxas: exit -11: 
+    torch==2.7.1+cu128
+    torchvision==0.22.1+cu128
+    pyarrow==23.0.0
+    av==16.0.1
+    transformers==4.49.0
+    datasets==3.6.0
+    accelerate==1.12.0
+    h5py==3.14.0
+    deepspeed==0.18.5
+    CUDA 12.8: NVIDIA A800-SXM4-80GB
+PASS PyTorch execution
+PASS PyTorch shared-memory manager
+Doctor finished: 5 passed, 2 failed.

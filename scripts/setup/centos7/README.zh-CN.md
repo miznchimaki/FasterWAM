@@ -1,5 +1,9 @@
 # FasterWAM：CentOS 7 + 私有 glibc + uv
 
+PyArrow 独立导入报 `librt.so.1: ... Permission denied` 时，参见
+[PYARROW.zh-CN.md](PYARROW.zh-CN.md)。三个已安装环境可使用
+`bash scripts/setup/repair_centos7_pyarrow.sh` 修复，无需重新安装。
+
 适用于 `miznchimaki/FasterWAM`，核对的仓库提交为
 `83667817df0d4f823f39d90700e61ea2f432ac45`。新增适配脚本；原仓库源码、
 `pyproject.toml`、四份 `uv.lock`、原安装脚本均未修改。没有执行 git add、commit 或 push。
@@ -289,6 +293,11 @@ python scripts/setup/centos7/doctor.py --profile core --require-cuda
 
 ## 5. 可选评测环境
 
+LIBERO-Plus 在 CentOS 7 下的 OpenCV / NVIDIA EGL / 原生 MagickWand
+修复入口见 [LIBERO_PLUS.zh-CN.md](LIBERO_PLUS.zh-CN.md)。已完成资产下载但
+最终 doctor 失败时，可执行 `bash scripts/setup/repair_centos7_libero_plus.sh`，
+继续修复现有环境，无需重新下载资产。
+
 只训练时无需安装下列环境。按你要跑的 benchmark 单独安装：
 
 | profile | 上游目录 | 锁定 Torch |
@@ -303,6 +312,28 @@ bash scripts/setup/install_centos7.sh libero
 source .runtime/centos7/libero/activate.sh
 python scripts/setup/centos7/doctor.py --profile libero --require-cuda --render
 ```
+
+若旧版脚本在 clone LIBERO 成功后报 `Unknown option: -C`，说明系统 Git 不
+支持 `git -C`，安装在切换固定源码版本时中断，尚未完成 LIBERO 安装和配置。
+本版 `_common.sh` 改用子 shell 中的 `cd`，所有调用均兼容旧 Git。
+
+已发生此错误时，应用修复后执行：
+
+```bash
+bash scripts/setup/resume_centos7_libero.sh
+```
+
+该恢复入口要求已建立的 LIBERO runtime 和完整 clone 存在，确认源码 origin、
+仓库根目录及工作树干净后，切换到 `8f1084e`，再调用正常安装入口完成后续工作。
+有本地修改或未跟踪文件时会停止，不会强制覆盖或清理。已下载的 clone 会复用。
+只替换 `git -C` 后直接重跑可能遇到 revision mismatch，因为已有目录在默认
+HEAD，而安装器对已有 checkout 会保留版本不匹配即停止的保护。
+重跑只同步 `.venvs/libero` 的锁定依赖；如果你后来额外装过未记录的包，它们
+可能被 uv sync 移除。core 训练环境 `.venv` 不属于这次安装的目标。
+
+安装以 `Ready: source .../.runtime/centos7/libero/activate.sh` 成功结束后，
+再在评测 GPU 节点执行上面的 `--require-cuda --render` 检查。默认安装检查
+不渲染；`--render` 验证 MuJoCo 离屏渲染，实际 LIBERO 任务还需短评测验证。
 
 之后原 `scripts/eval_fasterwam_libero.sh` 及其 CKPT_PATH、DATASET_STATS_PATH、
 NUM_GPUS 参数不变。LIBERO-Plus 对应把 profile 改成 `libero-plus`。
