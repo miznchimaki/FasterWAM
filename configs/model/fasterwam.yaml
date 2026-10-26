@@ -13,7 +13,8 @@ action_dit_pretrained_path: checkpoints/SparseActionDiT_cond_0_4_8_12_16_20_24_2
 skip_dit_load_from_pretrain: false
 
 video_dit_config:
-  # Disabled means the original full-parameter training for this expert.
+  # LoRA takes precedence over freeze. Both false restores full training.
+  freeze: false
   lora:
     enabled: false
     r: 16
@@ -53,9 +54,11 @@ video_dit_config:
   action_group_causal_mask_mode: "group_diagonal"
 
 action_dit_config:
-  # Train backbone LoRA A/B plus full dense action_encoder/head parameters.
+  # Freeze only the backbone; action_encoder/head always train densely.
+  # LoRA takes precedence over freeze. Both false restores full training.
+  freeze: false
   lora:
-    enabled: true
+    enabled: false
     r: 16
     lora_alpha: 16
     lora_dropout: 0.0
