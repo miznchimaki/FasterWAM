@@ -243,6 +243,11 @@ NPROC_PER_NODE=8 bash scripts/train_fasterwam_libero.sh \
   wandb.enabled=true
 ```
 
+Set `learning_rates.video`, `learning_rates.action`, and
+`learning_rates.fusion` independently; all default to `learning_rate` (`1e-4`).
+See [component learning rates](docs/learning_rates.md) for parameter ownership,
+freeze/LoRA behavior, W&B metrics, and resume compatibility.
+
 The LIBERO/RoboTwin wrappers and `train_zero1.sh` / `train_zero2.sh` / `train_zero3.sh` save the
 complete launcher and local worker stdout/stderr to `<output_dir>/train.log`,
 while also displaying it in the terminal. This includes training metrics,
