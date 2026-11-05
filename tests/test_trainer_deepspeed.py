@@ -166,7 +166,9 @@ class TrainerDeepSpeedTests(unittest.TestCase):
         def create_optimizer(parameters, **kwargs):
             events.append("optimizer_created")
             parameters = list(parameters)
-            optimizer_weights.extend(p.detach().clone() for p in parameters)
+            for item in parameters:
+                group_parameters = item["params"] if isinstance(item, dict) else [item]
+                optimizer_weights.extend(p.detach().clone() for p in group_parameters)
             return original_adamw(parameters, **kwargs)
 
         def create_accelerator(**kwargs):
