@@ -1,0 +1,1562 @@
+PASS OpenCV: opencv-python-headless==4.11.0.86, GUI=NONE, resize OK
+    cv2: /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/cv2/__init__.py
+BUILD /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/bin/python -I -B -u -c 'import ctypes, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+ctypes.CDLL(str(p / '"'"'libGLdispatch.so.0'"'"'), mode=ctypes.RTLD_GLOBAL)
+egl = ctypes.CDLL(str(p / '"'"'libEGL.so.1'"'"'))
+ctypes.CDLL(str(p / '"'"'libOpenGL.so.0'"'"'))
+egl.eglQueryString.argtypes = (ctypes.c_void_p, ctypes.c_int)
+egl.eglQueryString.restype = ctypes.c_char_p
+version = egl.eglQueryString(None, 0x3054)
+if version != b'"'"'1.5 libglvnd'"'"':
+    raise RuntimeError('"'"'Unexpected private EGL version: %r'"'"' % (version,))
+egl.eglGetProcAddress.argtypes = (ctypes.c_char_p,)
+egl.eglGetProcAddress.restype = ctypes.c_void_p
+if not egl.eglGetProcAddress(b'"'"'eglQueryDevicesEXT'"'"'):
+    raise RuntimeError('"'"'Private GLVND has no eglQueryDevicesEXT dispatch address'"'"')
+print('"'"'PASS private GLVND build:'"'"', version.decode(), flush=True)
+' /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero/private-glvnd/v1.7.0-20yjbupl/lib
+PASS private GLVND build: 1.5 libglvnd
+REUSE private GLVND: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero/private-glvnd/v1.7.0-20yjbupl/lib
+REUSE verified graphics from libero: libEGL_nvidia.so.0, libnvidia-eglcore.so.525.85.12, libnvidia-glsi.so.525.85.12, libnvidia-glvkspirv.so.525.85.12
+CHECK private librt is loadable
+/mnt/lustre/lizongshu/depends/glibc-2.35/lib/librt.so.1
+PASS private librt is loadable
+MuJoCo shared objects: 15
+UNCHANGED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_callbacks.cpython-310-x86_64-linux-gnu.so
+UNCHANGED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_constants.cpython-310-x86_64-linux-gnu.so
+UNCHANGED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_enums.cpython-310-x86_64-linux-gnu.so
+UNCHANGED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_errors.cpython-310-x86_64-linux-gnu.so
+UNCHANGED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_functions.cpython-310-x86_64-linux-gnu.so
+UNCHANGED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_render.cpython-310-x86_64-linux-gnu.so
+UNCHANGED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_rollout.cpython-310-x86_64-linux-gnu.so
+UNCHANGED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_simulate.cpython-310-x86_64-linux-gnu.so
+UNCHANGED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_specs.cpython-310-x86_64-linux-gnu.so
+UNCHANGED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/_structs.cpython-310-x86_64-linux-gnu.so
+UNCHANGED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/libmujoco.so.3.3.2
+UNCHANGED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/plugin/libactuator.so
+UNCHANGED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/plugin/libelasticity.so
+UNCHANGED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/plugin/libsdf.so
+UNCHANGED /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/mujoco/plugin/libsensor.so
+CHECK fresh MuJoCo import without graphics
+mujoco 3.3.2
+PASS fresh MuJoCo import without graphics
+CHECK normal Python XML and zlib before graphics build
+Expat: expat_2.8.1 ; pyexpat: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/python-base/lib/python3.10/lib-dynload/pyexpat.cpython-310-x86_64-linux-gnu.so
+zlib: 1.3.1 ; XML parsing and compression OK
+Python support mapped: /mnt/lustre/lizongshu/depends/anaconda3/envs/lerobot310/lib/libexpat.so.1.12.1
+Python support mapped: /mnt/lustre/lizongshu/depends/anaconda3/envs/lerobot310/lib/libz.so.1.3.1
+PASS normal Python XML and zlib before graphics build
+GRAPHICS libEGL_nvidia.so.0 <- /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero/native-libs/libEGL_nvidia.so.0
+GRAPHICS libEGL.so.1 <- /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero/private-glvnd/v1.7.0-20yjbupl/lib/libEGL.so.1.1.0
+GRAPHICS libOpenGL.so.0 <- /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero/private-glvnd/v1.7.0-20yjbupl/lib/libOpenGL.so.0.0.0
+GRAPHICS libGLdispatch.so.0 <- /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero/private-glvnd/v1.7.0-20yjbupl/lib/libGLdispatch.so.0.0.0
+GRAPHICS libnvidia-eglcore.so.525.85.12 <- /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero/native-libs/libnvidia-eglcore.so.525.85.12
+GRAPHICS libnvidia-glvkspirv.so.525.85.12 <- /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero/native-libs/libnvidia-glvkspirv.so.525.85.12
+GRAPHICS libnvidia-glsi.so.525.85.12 <- /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero/native-libs/libnvidia-glsi.so.525.85.12
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/native-libs/libEGL_nvidia.so.0
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/native-libs/libEGL.so.1
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/native-libs/libOpenGL.so.0
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/native-libs/libGLdispatch.so.0
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/native-libs/libnvidia-eglcore.so.525.85.12
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/native-libs/libnvidia-glvkspirv.so.525.85.12
+PATCHED /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/native-libs/libnvidia-glsi.so.525.85.12
+CHECK normal Python XML and zlib after graphics staging
+Expat: expat_2.8.1 ; pyexpat: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/python-base/lib/python3.10/lib-dynload/pyexpat.cpython-310-x86_64-linux-gnu.so
+zlib: 1.3.1 ; XML parsing and compression OK
+Python support mapped: /mnt/lustre/lizongshu/depends/anaconda3/envs/lerobot310/lib/libexpat.so.1.12.1
+Python support mapped: /mnt/lustre/lizongshu/depends/anaconda3/envs/lerobot310/lib/libz.so.1.3.1
+PASS normal Python XML and zlib after graphics staging
+CHECK fresh dlopen libEGL.so.1
+loaded libEGL.so.1
+PASS fresh dlopen libEGL.so.1
+CHECK fresh dlopen libEGL_nvidia.so.0
+loaded libEGL_nvidia.so.0
+PASS fresh dlopen libEGL_nvidia.so.0
+CHECK fresh dlopen libOpenGL.so.0
+loaded libOpenGL.so.0
+PASS fresh dlopen libOpenGL.so.0
+CHECK fresh dlopen libnvidia-eglcore.so.525.85.12
+loaded libnvidia-eglcore.so.525.85.12
+PASS fresh dlopen libnvidia-eglcore.so.525.85.12
+CHECK GLVND dispatcher and NVIDIA EGL devices
+EGL dispatcher version: b'1.5 libglvnd'
+EGL client extensions: b'EGL_EXT_platform_base EGL_EXT_device_base EGL_KHR_client_get_all_proc_addresses EGL_EXT_client_extensions EGL_KHR_debug EGL_KHR_platform_x11 EGL_EXT_platform_x11 EGL_EXT_platform_device EGL_MESA_platform_surfaceless EGL_EXT_explicit_device'
+EGL device count: 8
+EGL mapped: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/native-libs/libEGL.so.1
+EGL mapped: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/native-libs/libEGL_nvidia.so.0
+EGL mapped: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/native-libs/libGLdispatch.so.0
+EGL mapped: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/native-libs/libnvidia-eglcore.so.525.85.12
+EGL mapped: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/native-libs/libnvidia-glsi.so.525.85.12
+PASS GLVND dispatcher and NVIDIA EGL devices
+CHECK fresh EGL MuJoCo and robosuite imports
+[robosuite WARNING] No private macro file found! (__init__.py:7)
+[robosuite WARNING] It is recommended to use a private macro file (__init__.py:8)
+[robosuite WARNING] To setup, run: python /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/robosuite/scripts/setup_macros.py (__init__.py:9)
+mujoco 3.3.2
+robosuite import OK
+PASS fresh EGL MuJoCo and robosuite imports
+Refreshed activate.sh, bin/uv and run for libero-plus; Python and packages were not changed.
+Loader repair completed. Validate actual rendering with doctor.py --profile libero-plus --require-cuda --render under EGL.
+Original ELF backups: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/loader-repair-backups
+BUILD /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc --version
+gcc (GCC) 12.1.0
+Copyright (C) 2022 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+DOWNLOAD https://download.imagemagick.org/releases/ImageMagick-6.9.13-57.tar.xz
+VERIFIED SHA256 /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/ImageMagick-6.9.13-57.tar.xz
+DOWNLOAD https://download.sourceforge.net/libpng/libpng-1.6.44.tar.xz
+VERIFIED SHA256 /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/libpng-1.6.44.tar.xz
+DOWNLOAD https://zlib.net/fossils/zlib-1.3.1.tar.gz
+VERIFIED SHA256 /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/zlib-1.3.1.tar.gz
+BUILD /bin/sh /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/configure --static --prefix=/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates
+Building static library libz.a version 1.3.1 with /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc.
+Checking for size_t... Yes.
+Checking for off64_t... Yes.
+Checking for fseeko... Yes.
+Checking for strerror... Yes.
+Checking for unistd.h... Yes.
+Checking for stdarg.h... Yes.
+Checking whether to use vs[n]printf() or s[n]printf()... using vs[n]printf().
+Checking for vsnprintf() in stdio.h... Yes.
+Checking for return value of vsnprintf()... Yes.
+Checking for attribute(visibility) support... Yes.
+BUILD /mnt/lustre/lizongshu/depends/make-4.4/bin/make -j 2
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/ -c -o example.o /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/test/example.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I. -include zconf.h -c -o adler32.o /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/adler32.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I. -include zconf.h -c -o crc32.o /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/crc32.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I. -include zconf.h -c -o deflate.o /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/deflate.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I. -include zconf.h -c -o infback.o /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/infback.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I. -include zconf.h -c -o inffast.o /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/inffast.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I. -include zconf.h -c -o inflate.o /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/inflate.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I. -include zconf.h -c -o inftrees.o /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/inftrees.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I. -include zconf.h -c -o trees.o /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/trees.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I. -include zconf.h -c -o zutil.o /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/zutil.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I. -include zconf.h -c -o compress.o /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/compress.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I. -include zconf.h -c -o uncompr.o /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/uncompr.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I. -include zconf.h -c -o gzclose.o /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/gzclose.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I. -include zconf.h -c -o gzlib.o /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/gzlib.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I. -include zconf.h -c -o gzread.o /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/gzread.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I. -include zconf.h -c -o gzwrite.o /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/gzwrite.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/ -c -o minigzip.o /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/test/minigzip.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/ -D_FILE_OFFSET_BITS=64 -c -o example64.o /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/test/example.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/ -D_FILE_OFFSET_BITS=64 -c -o minigzip64.o /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/test/minigzip.c
+ar rc libz.a adler32.o crc32.o deflate.o infback.o inffast.o inflate.o inftrees.o trees.o zutil.o compress.o uncompr.o gzclose.o gzlib.o gzread.o gzwrite.o 
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN  -o example example.o -L. libz.a
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN  -o minigzip minigzip.o -L. libz.a
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN  -o example64 example64.o -L. libz.a
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN  -o minigzip64 minigzip64.o -L. libz.a
+BUILD /mnt/lustre/lizongshu/depends/make-4.4/bin/make install
+rm -f /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib/libz.a
+cp libz.a /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib
+chmod 644 /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib/libz.a
+rm -f /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/share/man/man3/zlib.3
+cp /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/zlib.3 /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/share/man/man3
+chmod 644 /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/share/man/man3/zlib.3
+rm -f /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib/pkgconfig/zlib.pc
+cp zlib.pc /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib/pkgconfig
+chmod 644 /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib/pkgconfig/zlib.pc
+rm -f /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include/zlib.h /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include/zconf.h
+cp /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/zlib-1.3.1/zlib.h zconf.h /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include
+chmod 644 /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include/zlib.h /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include/zconf.h
+BUILD /bin/sh /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/libpng-1.6.44/configure --prefix=/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates --libdir=/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib --disable-shared --enable-static --with-pic --disable-dependency-tracking
+checking for a BSD-compatible install... /usr/bin/install -c
+checking whether sleep supports fractional seconds... yes
+checking filesystem timestamp resolution... 2
+checking whether build environment is sane... yes
+checking for a race-free mkdir -p... /usr/bin/mkdir -p
+checking for gawk... gawk
+checking whether make sets $(MAKE)... yes
+checking whether make supports nested variables... yes
+checking xargs -n works... yes
+checking whether to enable maintainer-specific portions of Makefiles... no
+checking for gcc... /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc
+checking whether the C compiler works... yes
+checking for C compiler default output file name... a.out
+checking for suffix of executables... 
+checking whether we are cross compiling... no
+checking for suffix of object files... o
+checking whether the compiler supports GNU C... yes
+checking whether /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc accepts -g... yes
+checking for /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc option to enable C11 features... none needed
+checking whether /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc understands -c and -o together... yes
+checking whether make supports the include directive... yes (GNU style)
+checking dependency style of /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc... none
+checking dependency style of /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc... none
+checking build system type... x86_64-pc-linux-gnu
+checking host system type... x86_64-pc-linux-gnu
+checking for a sed that does not truncate output... /usr/bin/sed
+checking for grep that handles long lines and -e... /usr/bin/grep
+checking for egrep... /usr/bin/grep -E
+checking for fgrep... /usr/bin/grep -F
+checking how to print strings... printf
+checking for ld used by /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc... /mnt/lustre/lizongshu/depends/binutils/bin/ld
+checking if the linker (/mnt/lustre/lizongshu/depends/binutils/bin/ld) is GNU ld... yes
+checking how to run the C preprocessor... /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -E
+checking for gawk... (cached) gawk
+checking whether ln -s works... yes
+checking whether make sets $(MAKE)... (cached) yes
+checking for BSD- or MS-compatible name lister (nm)... /mnt/lustre/lizongshu/depends/binutils/bin/nm -B
+checking the name lister (/mnt/lustre/lizongshu/depends/binutils/bin/nm -B) interface... BSD nm
+checking the maximum length of command line arguments... 3458764513820540925
+checking how to convert x86_64-pc-linux-gnu file names to x86_64-pc-linux-gnu format... func_convert_file_noop
+checking how to convert x86_64-pc-linux-gnu file names to toolchain format... func_convert_file_noop
+checking for /mnt/lustre/lizongshu/depends/binutils/bin/ld option to reload object files... -r
+checking for file... file
+checking for objdump... objdump
+checking how to recognize dependent libraries... pass_all
+checking for dlltool... no
+checking how to associate runtime and link libraries... printf %s\n
+checking for ar... ar
+checking for archiver @FILE support... @
+checking for strip... strip
+checking for ranlib... ranlib
+checking command to parse /mnt/lustre/lizongshu/depends/binutils/bin/nm -B output from /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc object... ok
+checking for sysroot... no
+checking for a working dd... /usr/bin/dd
+checking how to truncate binary pipes... /usr/bin/dd bs=4096 count=1
+checking for mt... no
+checking if : is a manifest tool... no
+checking for stdio.h... yes
+checking for stdlib.h... yes
+checking for string.h... yes
+checking for inttypes.h... yes
+checking for stdint.h... yes
+checking for strings.h... yes
+checking for sys/stat.h... yes
+checking for sys/types.h... yes
+checking for unistd.h... yes
+checking for dlfcn.h... yes
+checking for objdir... .libs
+checking if /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc supports -fno-rtti -fno-exceptions... no
+checking for /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc option to produce PIC... -fPIC -DPIC
+checking if /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc PIC flag -fPIC -DPIC works... yes
+checking if /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc static flag -static works... no
+checking if /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc supports -c -o file.o... yes
+checking if /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc supports -c -o file.o... (cached) yes
+checking whether the /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc linker (/mnt/lustre/lizongshu/depends/binutils/bin/ld -m elf_x86_64) supports shared libraries... yes
+checking dynamic linker characteristics... GNU/Linux ld.so
+checking how to hardcode library paths into programs... immediate
+checking whether stripping libraries is possible... yes
+checking if libtool supports shared libraries... yes
+checking whether to build shared libraries... no
+checking whether to build static libraries... yes
+checking if awk (gawk) works... yes
+checking if we need to force back C standard to C89... no
+checking whether struct tm is in sys/time.h or time.h... time.h
+checking for C/C++ restrict keyword... __restrict__
+checking for pow... no
+checking for pow in -lm... yes
+checking for clock_gettime... yes
+checking for zlibVersion in -lz... yes
+checking for feenableexcept in -lm... yes
+checking for feenableexcept... yes
+checking if using Solaris linker... no
+checking if libraries can be versioned... yes
+checking for symbol prefix... 
+configure: pkgconfig directory is ${libdir}/pkgconfig
+configure: Extra options for compiler: 
+checking that generated files are newer than configure... done
+configure: creating ./config.status
+config.status: creating Makefile
+config.status: creating libpng.pc
+config.status: creating libpng-config
+config.status: creating config.h
+config.status: executing depfiles commands
+config.status: executing libtool commands
+BUILD /mnt/lustre/lizongshu/depends/make-4.4/bin/make -j 2
+rm -f pnglibconf.c pnglibconf.tf[45]
+gawk -f ./scripts/options.awk out=pnglibconf.tf4 version=search\
+    ./pngconf.h ./scripts/pnglibconf.dfa\
+    ./pngusr.dfa  1>&2
+gawk -f ./scripts/options.awk out=pnglibconf.tf5 pnglibconf.tf4 1>&2
+rm pnglibconf.tf4
+mv pnglibconf.tf5 pnglibconf.c
+rm -f pnglibconf.out pnglibconf.tf[12]
+test -d scripts || mkdir scripts || test -d scripts
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -E -DHAVE_CONFIG_H -I. \
+    -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -DPNGLIB_LIBNAME='PNG16_0' -DPNGLIB_VERSION='1.6.44' -DSYMBOL_PREFIX='' -DPNG_NO_USE_READ_MACROS -DPNG_BUILDING_SYMBOL_TABLE  pnglibconf.c > pnglibconf.tf1
+gawk -f "./scripts/dfn.awk" out="pnglibconf.tf2" pnglibconf.tf1 1>&2
+rm -f pnglibconf.tf1
+mv pnglibconf.tf2 pnglibconf.out
+rm -f pnglibconf.h
+cp pnglibconf.out pnglibconf.h
+/mnt/lustre/lizongshu/depends/make-4.4/bin/make  all-am
+make[1]: Entering directory '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/libpng-1.6.44'
+:>pngprefix.h
+rm -f scripts/vers.out scripts/vers.tf[12]
+test -d scripts || mkdir scripts || test -d scripts
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -E -DHAVE_CONFIG_H -I. \
+    -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -DPNGLIB_LIBNAME='PNG16_0' -DPNGLIB_VERSION='1.6.44' -DSYMBOL_PREFIX='' -DPNG_NO_USE_READ_MACROS -DPNG_BUILDING_SYMBOL_TABLE  scripts/vers.c > scripts/vers.tf1
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o contrib/tools/png-fix-itxt.o contrib/tools/png-fix-itxt.c
+gawk -f "./scripts/dfn.awk" out="scripts/vers.tf2" scripts/vers.tf1 1>&2
+rm -f scripts/vers.tf1
+mv scripts/vers.tf2 scripts/vers.out
+cp libpng-config libpng16-config
+cp libpng.pc libpng16.pc
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o pngtest.o pngtest.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o contrib/tools/pngcp.o contrib/tools/pngcp.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o contrib/libtests/timepng.o contrib/libtests/timepng.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o contrib/tools/pngfix.o contrib/tools/pngfix.c
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o png.lo png.c
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c png.c  -fPIC -DPIC -o png.o
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o pngerror.lo pngerror.c
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c pngerror.c  -fPIC -DPIC -o pngerror.o
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o pngget.lo pngget.c
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c pngget.c  -fPIC -DPIC -o pngget.o
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o pngmem.lo pngmem.c
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c pngmem.c  -fPIC -DPIC -o pngmem.o
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o pngpread.lo pngpread.c
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o pngread.lo pngread.c
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c pngpread.c  -fPIC -DPIC -o pngpread.o
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c pngread.c  -fPIC -DPIC -o pngread.o
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o pngrio.lo pngrio.c
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c pngrio.c  -fPIC -DPIC -o pngrio.o
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o pngrtran.lo pngrtran.c
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c pngrtran.c  -fPIC -DPIC -o pngrtran.o
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o pngrutil.lo pngrutil.c
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c pngrutil.c  -fPIC -DPIC -o pngrutil.o
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o pngset.lo pngset.c
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c pngset.c  -fPIC -DPIC -o pngset.o
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o pngtrans.lo pngtrans.c
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c pngtrans.c  -fPIC -DPIC -o pngtrans.o
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o pngwio.lo pngwio.c
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c pngwio.c  -fPIC -DPIC -o pngwio.o
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o pngwrite.lo pngwrite.c
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o pngwtran.lo pngwtran.c
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c pngwrite.c  -fPIC -DPIC -o pngwrite.o
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c pngwtran.c  -fPIC -DPIC -o pngwtran.o
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o pngwutil.lo pngwutil.c
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c pngwutil.c  -fPIC -DPIC -o pngwutil.o
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o mips/mips_init.lo mips/mips_init.c
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c mips/mips_init.c  -fPIC -DPIC -o mips/mips_init.o
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o mips/filter_msa_intrinsics.lo mips/filter_msa_intrinsics.c
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c mips/filter_msa_intrinsics.c  -fPIC -DPIC -o mips/filter_msa_intrinsics.o
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o mips/filter_mmi_inline_assembly.lo mips/filter_mmi_inline_assembly.c
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c mips/filter_mmi_inline_assembly.c  -fPIC -DPIC -o mips/filter_mmi_inline_assembly.o
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o intel/intel_init.lo intel/intel_init.c
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o intel/filter_sse2_intrinsics.lo intel/filter_sse2_intrinsics.c
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c intel/intel_init.c  -fPIC -DPIC -o intel/intel_init.o
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c intel/filter_sse2_intrinsics.c  -fPIC -DPIC -o intel/filter_sse2_intrinsics.o
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o powerpc/powerpc_init.lo powerpc/powerpc_init.c
+/bin/sh ./libtool  --tag=CC   --mode=compile /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o powerpc/filter_vsx_intrinsics.lo powerpc/filter_vsx_intrinsics.c
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c powerpc/powerpc_init.c  -fPIC -DPIC -o powerpc/powerpc_init.o
+libtool: compile:  /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I. -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -O2 -fPIC -c powerpc/filter_vsx_intrinsics.c  -fPIC -DPIC -o powerpc/filter_vsx_intrinsics.o
+rm -f libpng.vers
+cp scripts/vers.out libpng.vers
+/bin/sh ./libtool  --tag=CC   --mode=link /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc  -O2 -fPIC  -L/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib -o png-fix-itxt contrib/tools/png-fix-itxt.o  -lm -lz -lm 
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o contrib/libtests/pngunknown.o contrib/libtests/pngunknown.c
+libtool: link: /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -o png-fix-itxt contrib/tools/png-fix-itxt.o  -L/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib -lz -lm
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o contrib/libtests/pngstest.o contrib/libtests/pngstest.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o contrib/libtests/pngvalid.o contrib/libtests/pngvalid.c
+/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -DHAVE_CONFIG_H -I.   -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include  -O2 -fPIC -c -o contrib/libtests/pngimage.o contrib/libtests/pngimage.c
+/bin/sh ./libtool  --tag=CC   --mode=link /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc  -O2 -fPIC -no-undefined -export-dynamic -version-number 16:44:0  -Wl,--version-script=libpng.vers  -L/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib -o libpng16.la -rpath /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib png.lo pngerror.lo pngget.lo pngmem.lo pngpread.lo pngread.lo pngrio.lo pngrtran.lo pngrutil.lo pngset.lo pngtrans.lo pngwio.lo pngwrite.lo pngwtran.lo pngwutil.lo  mips/mips_init.lo mips/filter_msa_intrinsics.lo  mips/filter_mmi_inline_assembly.lo intel/intel_init.lo intel/filter_sse2_intrinsics.lo powerpc/powerpc_init.lo powerpc/filter_vsx_intrinsics.lo   -lm -lz -lm 
+libtool: link: ar cr .libs/libpng16.a  png.o pngerror.o pngget.o pngmem.o pngpread.o pngread.o pngrio.o pngrtran.o pngrutil.o pngset.o pngtrans.o pngwio.o pngwrite.o pngwtran.o pngwutil.o mips/mips_init.o mips/filter_msa_intrinsics.o mips/filter_mmi_inline_assembly.o intel/intel_init.o intel/filter_sse2_intrinsics.o powerpc/powerpc_init.o powerpc/filter_vsx_intrinsics.o
+libtool: link: ranlib .libs/libpng16.a
+libtool: link: ( cd ".libs" && rm -f "libpng16.la" && ln -s "../libpng16.la" "libpng16.la" )
+/bin/sh ./libtool  --tag=CC   --mode=link /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc  -O2 -fPIC  -L/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib -o pngfix contrib/tools/pngfix.o libpng16.la -lm -lz -lm 
+libtool: link: /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -o pngfix contrib/tools/pngfix.o  -L/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib ./.libs/libpng16.a -lz -lm
+/bin/sh ./libtool  --tag=CC   --mode=link /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc  -O2 -fPIC  -L/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib -o pngtest pngtest.o libpng16.la -lm -lz -lm 
+libtool: link: /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -o pngtest pngtest.o  -L/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib ./.libs/libpng16.a -lz -lm
+/bin/sh ./libtool  --tag=CC   --mode=link /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc  -O2 -fPIC  -L/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib -o pngunknown contrib/libtests/pngunknown.o libpng16.la -lm -lz -lm 
+libtool: link: /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -o pngunknown contrib/libtests/pngunknown.o  -L/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib ./.libs/libpng16.a -lz -lm
+/bin/sh ./libtool  --tag=CC   --mode=link /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc  -O2 -fPIC  -L/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib -o pngstest contrib/libtests/pngstest.o libpng16.la -lm -lz -lm 
+libtool: link: /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -o pngstest contrib/libtests/pngstest.o  -L/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib ./.libs/libpng16.a -lz -lm
+/bin/sh ./libtool  --tag=CC   --mode=link /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc  -O2 -fPIC  -L/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib -o pngimage contrib/libtests/pngimage.o libpng16.la -lm -lz -lm 
+libtool: link: /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -o pngimage contrib/libtests/pngimage.o  -L/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib ./.libs/libpng16.a -lz -lm
+/bin/sh ./libtool  --tag=CC   --mode=link /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc  -O2 -fPIC  -L/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib -o pngcp contrib/tools/pngcp.o libpng16.la -lm -lz -lm 
+libtool: link: /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -o pngcp contrib/tools/pngcp.o  -L/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib ./.libs/libpng16.a -lz -lm
+/bin/sh ./libtool  --tag=CC   --mode=link /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc  -O2 -fPIC  -L/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib -o timepng contrib/libtests/timepng.o libpng16.la -lm -lz -lm 
+libtool: link: /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -o timepng contrib/libtests/timepng.o  -L/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib ./.libs/libpng16.a -lz -lm
+/bin/sh ./libtool  --tag=CC   --mode=link /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc  -O2 -fPIC  -L/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib -o pngvalid contrib/libtests/pngvalid.o libpng16.la -lm -lz -lm 
+libtool: link: /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -O2 -fPIC -o pngvalid contrib/libtests/pngvalid.o  -L/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib ./.libs/libpng16.a -lz -lm
+make[1]: Leaving directory '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/libpng-1.6.44'
+BUILD /mnt/lustre/lizongshu/depends/make-4.4/bin/make install
+/mnt/lustre/lizongshu/depends/make-4.4/bin/make  install-am
+make[1]: Entering directory '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/libpng-1.6.44'
+make[2]: Entering directory '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/libpng-1.6.44'
+ /usr/bin/mkdir -p '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib'
+ /bin/sh ./libtool   --mode=install /usr/bin/install -c   libpng16.la '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib'
+libtool: install: /usr/bin/install -c .libs/libpng16.lai /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib/libpng16.la
+libtool: install: /usr/bin/install -c .libs/libpng16.a /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib/libpng16.a
+libtool: install: chmod 644 /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib/libpng16.a
+libtool: install: ranlib /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib/libpng16.a
+libtool: finish: PATH="/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/bin:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/bin:/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin:/mnt/lustre/lizongshu/depends/cuda-12.4/bin:/mnt/lustre/lizongshu/depends/nasm-2.16.03/bin:/mnt/lustre/lizongshu/depends/binutils/bin:/mnt/lustre/lizongshu/depends/texinfo-7.2/bin:/mnt/lustre/lizongshu/depends/make-4.4/bin:/mnt/lustre/lizongshu/ossutil-2.1.1-linux-amd64:/mnt/lustre/lizongshu/obsutil_linux_amd64_5.4.11:/mnt/lustre/lizongshu/depends/cuda-12.4/bin:/mnt/lustre/lizongshu/depends/gcc-12.1.0/bin:/mnt/lustre/lizongshu/depends/gcc-12.1.0/lib64:/mnt/lustre/lizongshu/depends/local/bin/:/mnt/lustre/lizongshu/depends/anaconda3/condabin:/usr/local/alluxio-2.9.3/integration/fuse/bin:/usr/local/jdk1.8.0_181/bin:/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/public/software/go/bin:/public/software/singularity/bin:/mnt/lustre/lizongshu/.local/bin:/mnt/lustre/lizongshu/bin:/sbin" ldconfig -n /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib
+----------------------------------------------------------------------
+Libraries have been installed in:
+   /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib
+
+If you ever happen to want to link against installed libraries
+in a given directory, LIBDIR, you must either use libtool, and
+specify the full pathname of the library, or use the '-LLIBDIR'
+flag during linking and do at least one of the following:
+   - add LIBDIR to the 'LD_LIBRARY_PATH' environment variable
+     during execution
+   - add LIBDIR to the 'LD_RUN_PATH' environment variable
+     during linking
+   - use the '-Wl,-rpath -Wl,LIBDIR' linker flag
+   - have your system administrator add LIBDIR to '/etc/ld.so.conf'
+
+See any operating system documentation about shared libraries for
+more information, such as the ld(1) and ld.so(8) manual pages.
+----------------------------------------------------------------------
+ /usr/bin/mkdir -p '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/bin'
+  /bin/sh ./libtool   --mode=install /usr/bin/install -c pngfix png-fix-itxt '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/bin'
+libtool: install: /usr/bin/install -c pngfix /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/bin/pngfix
+libtool: install: /usr/bin/install -c png-fix-itxt /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/bin/png-fix-itxt
+ /usr/bin/mkdir -p '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/bin'
+ /usr/bin/install -c libpng16-config '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/bin'
+/mnt/lustre/lizongshu/depends/make-4.4/bin/make  install-exec-hook
+make[3]: Entering directory '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/libpng-1.6.44'
++ cd /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib
++ for ext in a dll.a so so.16.44 la sl dylib
++ rm -f libpng.a
++ test -f libpng16.a
++ ln -s libpng16.a libpng.a
++ for ext in a dll.a so so.16.44 la sl dylib
++ rm -f libpng.dll.a
++ test -f libpng16.dll.a
++ for ext in a dll.a so so.16.44 la sl dylib
++ rm -f libpng.so
++ test -f libpng16.so
++ for ext in a dll.a so so.16.44 la sl dylib
++ rm -f libpng.so.16.44
++ test -f libpng16.so.16.44
++ for ext in a dll.a so so.16.44 la sl dylib
++ rm -f libpng.la
++ test -f libpng16.la
++ ln -s libpng16.la libpng.la
++ for ext in a dll.a so so.16.44 la sl dylib
++ rm -f libpng.sl
++ test -f libpng16.sl
++ for ext in a dll.a so so.16.44 la sl dylib
++ rm -f libpng.dylib
++ test -f libpng16.dylib
++ cd /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/bin
++ rm -f libpng-config
++ ln -s libpng16-config libpng-config
+make[3]: Leaving directory '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/libpng-1.6.44'
+ /usr/bin/mkdir -p '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/share/man/man3'
+ /usr/bin/install -c -m 644 libpng.3 libpngpf.3 '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/share/man/man3'
+ /usr/bin/mkdir -p '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/share/man/man5'
+ /usr/bin/install -c -m 644 png.5 '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/share/man/man5'
+ /usr/bin/mkdir -p '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include/libpng16'
+ /usr/bin/install -c -m 644 pnglibconf.h '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include/libpng16'
+ /usr/bin/mkdir -p '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib/pkgconfig'
+ /usr/bin/install -c -m 644 libpng16.pc '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib/pkgconfig'
+ /usr/bin/mkdir -p '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include/libpng16'
+ /usr/bin/install -c -m 644 png.h pngconf.h '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include/libpng16'
+/mnt/lustre/lizongshu/depends/make-4.4/bin/make  install-data-hook
+make[3]: Entering directory '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/libpng-1.6.44'
++ cd /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include
++ for f in pnglibconf.h png.h pngconf.h
++ rm -f pnglibconf.h
++ ln -s libpng16/pnglibconf.h pnglibconf.h
++ for f in pnglibconf.h png.h pngconf.h
++ rm -f png.h
++ ln -s libpng16/png.h png.h
++ for f in pnglibconf.h png.h pngconf.h
++ rm -f pngconf.h
++ ln -s libpng16/pngconf.h pngconf.h
++ cd /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib/pkgconfig
++ rm -f libpng.pc
++ ln -s libpng16.pc libpng.pc
+make[3]: Leaving directory '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/libpng-1.6.44'
+make[2]: Leaving directory '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/libpng-1.6.44'
+make[1]: Leaving directory '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/libpng-1.6.44'
+BUILD /bin/sh /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57/configure --prefix=/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb --libdir=/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib --enable-shared --disable-static --disable-openmp --disable-opencl --disable-hdri --with-quantum-depth=16 --without-modules --without-magick-plus-plus --without-perl --disable-docs --disable-dependency-tracking --with-png --with-zlib --without-x --without-bzlib --without-zstd --without-autotrace --without-dps --without-fftw --without-flif --without-fpx --without-djvu --without-fontconfig --without-freetype --without-raqm --without-gdi32 --without-gslib --without-gvc --without-heic --without-jbig --without-jpeg --without-lcms --without-openjp2 --without-lqr --without-lzma --without-openexr --without-pango --without-raw --without-rsvg --without-tiff --without-webp --without-wmf --without-xml
+checking build system type... x86_64-pc-linux-gnu
+checking host system type... x86_64-pc-linux-gnu
+checking target system type... x86_64-pc-linux-gnu
+checking for a BSD-compatible install... /usr/bin/install -c
+checking whether sleep supports fractional seconds... yes
+checking filesystem timestamp resolution... 2
+checking whether build environment is sane... yes
+checking for a race-free mkdir -p... /usr/bin/mkdir -p
+checking for gawk... gawk
+checking whether make sets $(MAKE)... yes
+checking whether make supports nested variables... yes
+checking xargs -n works... yes
+checking whether UID '32031' is supported by ustar format... yes
+checking whether GID '42022' is supported by ustar format... yes
+checking how to create a ustar tar archive... gnutar
+Configuring ImageMagick 6.9.13-57
+checking whether build environment is sane... yes
+checking whether make supports the include directive... yes (GNU style)
+checking for gcc... /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc
+checking whether the C compiler works... yes
+checking for C compiler default output file name... a.out
+checking for suffix of executables... 
+checking whether we are cross compiling... no
+checking for suffix of object files... o
+checking whether the compiler supports GNU C... yes
+checking whether /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc accepts -g... yes
+checking for /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc option to enable C11 features... none needed
+checking whether /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc understands -c and -o together... yes
+checking dependency style of /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc... none
+checking for stdio.h... yes
+checking for stdlib.h... yes
+checking for string.h... yes
+checking for inttypes.h... yes
+checking for stdint.h... yes
+checking for strings.h... yes
+checking for sys/stat.h... yes
+checking for sys/types.h... yes
+checking for unistd.h... yes
+checking for wchar.h... yes
+checking for minix/config.h... no
+checking for sys/param.h... yes
+checking whether it is safe to define __EXTENSIONS__... yes
+checking whether _XOPEN_SOURCE should be defined... no
+checking for ar... ar
+checking the archiver (ar) interface... ar
+checking for gcc... (cached) /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc
+checking whether the compiler supports GNU C... (cached) yes
+checking whether /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc accepts -g... (cached) yes
+checking for /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc option to enable C11 features... (cached) none needed
+checking whether /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc understands -c and -o together... (cached) yes
+checking dependency style of /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc... (cached) none
+checking how to run the C preprocessor... /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -E
+checking for a sed that does not truncate output... /usr/bin/sed
+checking for grep that handles long lines and -e... /usr/bin/grep
+checking for egrep... /usr/bin/grep -E
+checking for fgrep... /usr/bin/grep -F
+checking how to print strings... printf
+checking for ld used by /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc... /mnt/lustre/lizongshu/depends/binutils/bin/ld
+checking if the linker (/mnt/lustre/lizongshu/depends/binutils/bin/ld) is GNU ld... yes
+checking for C compiler vendor... gnu
+checking CFLAGS for most reasonable warnings... -Wall
+checking whether make sets $(MAKE)... (cached) yes
+checking whether ln -s works... yes
+checking for a sed that does not truncate output... (cached) /usr/bin/sed
+checking for gawk... (cached) gawk
+checking if malloc debugging is wanted... no
+checking for __attribute__... yes
+checking for gcc architecture flag... 
+checking for x86 cpuid 0 output... 1b:756e6547:6c65746e:49656e69
+checking for x86 cpuid 1 output... 606a6:a6800800:7ffefbf7:bfebfbff
+checking whether C compiler accepts -mtune=core2... yes
+checking for gcc architecture flag... -mtune=core2
+checking for pkg-config... /usr/bin/pkg-config
+checking pkg-config is at least version 0.20... yes
+checking for C compiler vendor... (cached) gnu
+checking if LD -Wl,--version-script works... yes
+checking for linker lazyload option... none
+checking for egrep -e... (cached) /usr/bin/grep -E
+checking whether /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc is Clang... no
+checking whether pthreads work with "-pthread" and "-lpthread"... yes
+checking for joinable pthread attribute... PTHREAD_CREATE_JOINABLE
+checking whether more special flags are required for pthreads... no
+checking for PTHREAD_PRIO_INHERIT... yes
+checking for /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc options needed to detect all undeclared functions... none needed
+checking whether _OPENMP is declared... no
+checking for OpenCL library... disabled
+checking for /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc option to enable large file support... none needed
+checking for declarations of fseeko and ftello... yes
+checking Linux compatible sendfile()... yes
+checking for BSD- or MS-compatible name lister (nm)... /mnt/lustre/lizongshu/depends/binutils/bin/nm -B
+checking the name lister (/mnt/lustre/lizongshu/depends/binutils/bin/nm -B) interface... BSD nm
+checking the maximum length of command line arguments... 3458764513820540925
+checking how to convert x86_64-pc-linux-gnu file names to x86_64-pc-linux-gnu format... func_convert_file_noop
+checking how to convert x86_64-pc-linux-gnu file names to toolchain format... func_convert_file_noop
+checking for /mnt/lustre/lizongshu/depends/binutils/bin/ld option to reload object files... -r
+checking for file... file
+checking for objdump... objdump
+checking how to recognize dependent libraries... pass_all
+checking for dlltool... no
+checking how to associate runtime and link libraries... printf %s\n
+checking for ranlib... ranlib
+checking for archiver @FILE support... @
+checking for strip... strip
+checking command to parse /mnt/lustre/lizongshu/depends/binutils/bin/nm -B output from /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc object... ok
+checking for sysroot... no
+checking for a working dd... /usr/bin/dd
+checking how to truncate binary pipes... /usr/bin/dd bs=4096 count=1
+checking for mt... no
+checking if : is a manifest tool... no
+checking for dlfcn.h... yes
+checking for objdir... .libs
+checking if /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc supports -fno-rtti -fno-exceptions... no
+checking for /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc option to produce PIC... -fPIC -DPIC
+checking if /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc PIC flag -fPIC -DPIC works... yes
+checking if /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc static flag -static works... no
+checking if /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc supports -c -o file.o... yes
+checking if /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc supports -c -o file.o... (cached) yes
+checking whether the /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc linker (/mnt/lustre/lizongshu/depends/binutils/bin/ld -m elf_x86_64) supports shared libraries... yes
+checking whether -lc should be explicitly linked in... no
+checking dynamic linker characteristics... GNU/Linux ld.so
+checking how to hardcode library paths into programs... immediate
+checking for shl_load... no
+checking for shl_load in -ldld... no
+checking for dlopen... no
+checking for dlopen in -ldl... yes
+checking whether a program can dlopen itself... yes
+checking whether a statically linked program can dlopen itself... yes
+checking whether stripping libraries is possible... yes
+checking if libtool supports shared libraries... yes
+checking whether to build shared libraries... yes
+checking whether to build static libraries... no
+checking whether the compiler supports GNU C++... yes
+checking whether /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/g++ accepts -g... yes
+checking for /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/g++ option to enable C++11 features... none needed
+checking dependency style of /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/g++... none
+checking how to run the C++ preprocessor... /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/g++ -E
+checking for ld used by /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/g++... /mnt/lustre/lizongshu/depends/binutils/bin/ld -m elf_x86_64
+checking if the linker (/mnt/lustre/lizongshu/depends/binutils/bin/ld -m elf_x86_64) is GNU ld... yes
+checking whether the /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/g++ linker (/mnt/lustre/lizongshu/depends/binutils/bin/ld -m elf_x86_64) supports shared libraries... yes
+checking for /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/g++ option to produce PIC... -fPIC -DPIC
+checking if /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/g++ PIC flag -fPIC -DPIC works... yes
+checking if /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/g++ static flag -static works... no
+checking if /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/g++ supports -c -o file.o... yes
+checking if /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/g++ supports -c -o file.o... (cached) yes
+checking whether the /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/g++ linker (/mnt/lustre/lizongshu/depends/binutils/bin/ld -m elf_x86_64) supports shared libraries... yes
+checking dynamic linker characteristics... (cached) GNU/Linux ld.so
+checking how to hardcode library paths into programs... immediate
+checking whether to enable maintainer-specific portions of Makefiles... no
+checking which variant of security policy to enforce... open
+checking whether to enable assertions... yes
+checking for dirent.h that defines DIR... yes
+checking for library containing opendir... none required
+checking for arm/limits.h... no
+checking for arpa/inet.h... yes
+checking for complex.h... yes
+checking for errno.h... yes
+checking for fcntl.h... yes
+checking for float.h... yes
+checking for inttypes.h... (cached) yes
+checking for limits.h... yes
+checking for linux/unistd.h... yes
+checking for locale.h... yes
+checking for malloc.h... yes
+checking for machine/param.h... no
+checking for mach-o/dyld.h... no
+checking for netdb.h... yes
+checking for netinet/in.h... yes
+checking for OS.h... no
+checking for process.h... no
+checking for stddef.h... yes
+checking for stdint.h... (cached) yes
+checking for sun_prefetch.h... no
+checking for stdarg.h... yes
+checking for strings.h... (cached) yes
+checking for sys/ipc.h... yes
+checking for sys/loadavg.h... no
+checking for sys/mman.h... yes
+checking for sys/resource.h... yes
+checking for sys/sendfile.h... yes
+checking for sys/socket.h... yes
+checking for sys/syslimits.h... no
+checking for sys/time.h... yes
+checking for sys/times.h... yes
+checking for sys/uio.h... yes
+checking for sys/wait.h... yes
+checking for unistd.h... (cached) yes
+checking for utime.h... yes
+checking for wchar.h... (cached) yes
+checking for xlocale.h... yes
+checking for _Bool... yes
+checking for stdbool.h that conforms to C99 or later... yes
+checking for working volatile... yes
+checking whether stat file-mode macros are broken... no
+checking whether struct tm is in sys/time.h or time.h... time.h
+checking for struct tm.tm_zone... yes
+checking whether #! works in shell scripts... yes
+checking whether char is unsigned... no
+checking for an ANSI C-conforming const... yes
+checking for inline... inline
+checking for C/C++ restrict keyword... __restrict__
+checking for working volatile... (cached) yes
+checking whether byte ordering is bigendian... no
+checking for int8_t... yes
+checking for int16_t... yes
+checking for int32_t... yes
+checking for int64_t... yes
+checking for unsigned long long int... yes
+checking for long long int... yes
+checking for intmax_t... yes
+checking for intptr_t... yes
+checking for mbstate_t... yes
+checking for mode_t... yes
+checking for off_t... yes
+checking for pid_t... yes
+checking for size_t... yes
+checking for ssize_t... yes
+checking for uid_t... yes
+checking for gid_t... yes
+checking for uint8_t... yes
+checking for uint16_t... yes
+checking for uint32_t... yes
+checking for uint64_t... yes
+checking for uintmax_t... yes
+checking for uintptr_t... yes
+checking size of float_t... 4
+checking size of double_t... 8
+checking size of float... 4
+checking size of double... 8
+checking size of long double... 16
+checking size of unsigned long long... 8
+checking size of size_t... 8
+checking size of void *... 8
+checking whether our compiler supports __func__... yes
+checking for getpagesize... yes
+checking for working mmap... yes
+checking for working strtod... yes
+checking whether strerror_r is declared... yes
+checking whether strerror_r returns char *... yes
+checking for sqrt in -lm... yes
+checking for library containing gethostbyname... none required
+checking for library containing socket... none required
+checking for library containing clock_gettime... none required
+checking whether clock_gettime supports CLOCK_REALTIME... yes
+checking whether pread is declared... yes
+checking whether pwrite is declared... yes
+checking whether strlcpy is declared... no
+checking whether vsnprintf is declared... yes
+checking for X11 configure files... 
+checking for X... disabled
+-------------------------------------------------------------
+checking for zlib >= 1.0.0... yes
+
+-------------------------------------------------------------
+checking for libpng >= 1.0.0... yes
+
+checking if WMF package is complete... no
+checking for acosh... yes
+checking for _aligned_malloc... no
+checking for aligned_malloc... no
+checking for asinh... yes
+checking for atanh... yes
+checking for atoll... yes
+checking for atexit... yes
+checking for cabs... yes
+checking for carg... yes
+checking for cimag... yes
+checking for creal... yes
+checking for clock... yes
+checking for clock_getres... yes
+checking for clock_gettime... yes
+checking for ctime_r... yes
+checking for directio... no
+checking for erf... yes
+checking for _exit... yes
+checking for execvp... yes
+checking for fchmod... yes
+checking for floor... yes
+checking for fork... yes
+checking for ftime... yes
+checking for ftruncate... yes
+checking for getc_unlocked... yes
+checking for getcwd... yes
+checking for getentropy... no
+checking for getexecname... no
+checking for getdtablesize... yes
+checking for getpagesize... (cached) yes
+checking for getpid... yes
+checking for getpwnam_r... yes
+checking for getrlimit... yes
+checking for getrusage... yes
+checking for gettimeofday... yes
+checking for gmtime_r... yes
+checking for isnan... yes
+checking for j0... yes
+checking for j1... yes
+checking for lltostr... no
+checking for localtime_r... yes
+checking for lstat... yes
+checking for mkdir... yes
+checking for memmove... yes
+checking for memset... yes
+checking for mkstemp... yes
+checking for munmap... yes
+checking for nanosleep... yes
+checking for newlocale... yes
+checking for _NSGetExecutablePath... no
+checking for pclose... yes
+checking for _pclose... no
+checking for poll... yes
+checking for popen... yes
+checking for _popen... no
+checking for posix_fadvise... yes
+checking for posix_fallocate... yes
+checking for posix_madvise... yes
+checking for posix_memalign... yes
+checking for posix_spawnp... yes
+checking for pow... yes
+checking for pread... yes
+checking for putenv... yes
+checking for pwrite... yes
+checking for qsort_r... yes
+checking for raise... yes
+checking for rand_r... yes
+checking for readlink... yes
+checking for realpath... yes
+checking for select... yes
+checking for seekdir... yes
+checking for sendfile... yes
+checking for setlocale... yes
+checking for socket... yes
+checking for sqrt... yes
+checking for setvbuf... yes
+checking for stat... yes
+checking for strcasestr... yes
+checking for strchr... yes
+checking for strrchr... yes
+checking for strcspn... yes
+checking for strdup... yes
+checking for strpbrk... yes
+checking for strspn... yes
+checking for strstr... yes
+checking for strtod... (cached) yes
+checking for strtod_l... yes
+checking for strtol... yes
+checking for strtoul... yes
+checking for symlink... yes
+checking for sysconf... yes
+checking for sigemptyset... yes
+checking for sigaction... yes
+checking for spawnvp... no
+checking for strerror... yes
+checking for strlcat... no
+checking for strlcpy... no
+checking for strcasecmp... yes
+checking for strncasecmp... yes
+checking for system... yes
+checking for telldir... yes
+checking for tempnam... yes
+checking for times... yes
+checking for ulltostr... no
+checking for uselocale... yes
+checking for usleep... yes
+checking for utime... yes
+checking for vfprintf... yes
+checking for vfprintf_l... no
+checking for vsprintf... yes
+checking for vsnprintf... yes
+checking for vsnprintf_l... no
+checking for waitpid... yes
+checking for _wfopen... no
+checking for _wstat... no
+-------------------------------------------------------------
+checking for ImageMagick delegate programs... 
+checking for bpgdec... bpgdec
+checking for bpgenc... bpgenc
+checking for blender... blender
+checking for xdg-open... /usr/bin/xdg-open
+checking for xclip... no
+checking for darktable-cli... darktable-cli
+checking for libreoffice... libreoffice
+checking for dvips... dvips
+checking for convert... convert
+checking for display... display
+checking for xterm... xterm
+checking for dot... /usr/bin/dot
+checking for hp2xx... hp2xx
+checking for html2ps... html2ps
+checking for ilbmtoppm... ilbmtoppm
+checking for ppmtoilbm... ppmtoilbm
+checking for JxrDecApp... JxrDecApp
+checking for JxrEncApp... JxrEncApp
+checking for lepton... lepton
+checking for lp... /usr/bin/lp
+checking for lpr... /usr/bin/lpr
+checking for gimp... gimp
+checking for mkdir... /usr/bin/mkdir
+checking for mogrify... mogrify
+checking for mrsidgeodecode... mrsidgeodecode
+checking for mv... /usr/bin/mv
+checking for open... /usr/bin/open
+checking for pcl6... pcl6
+checking for gsx... no
+checking for gsc... no
+checking for gs... /usr/bin/gs
+checking for rm... /usr/bin/rm
+checking for rsvg-convert... /usr/bin/rsvg-convert
+checking for inkscape... inkscape
+checking for tesseract... tesseract
+checking for potrace... potrace
+checking for ffmpeg... ffmpeg
+checking for ffmpeg... ffmpeg
+checking for dwebp... dwebp
+checking for cwebp... cwebp
+checking for curl... /usr/bin/curl
+checking for gxps... gxps
+checking for Apple fonts directory... not found!
+checking for Dejavu fonts directory... not found!
+checking for Ghostscript fonts directory... /usr/share/fonts/default/Type1/
+checking for URW-base35 fonts directory... not found!
+checking for URW-base35 Type1 fonts directory... not found!
+checking for Windows fonts directory... not found!
+checking for gnutar... no
+checking for gtar... gtar
+checking for perl... perl
+checking for rpmbuild... rpmbuild
+checking for 7za... no
+checking for zip... zip
+-------------------------------------------------------------
+checking for Ghostscript... 
+checking for Ghostscript version... 9.07
+checking for gs color device... png16m
+checking for gs alpha device... pngalpha
+checking for gs CMYK device... pamcmyk32
+checking for gs mono device... pbmraw
+checking for gs PDF writing device... pdfwrite
+checking for gs PS writing device... ps2write
+checking for gs EPS writing device... epswrite
+-------------------------------------------------------------
+Update ImageMagick configuration
+checking that generated files are newer than configure... done
+checking that generated files are newer than configure... done
+configure: creating ./config.status
+config.status: creating common.shi
+config.status: creating config/configure.xml
+config.status: creating config/delegates.xml
+config.status: creating config/ImageMagick.rdf
+config.status: creating config/MagickCore.dox
+config.status: creating config/MagickWand.dox
+config.status: creating config/Magick++.dox
+config.status: creating config/policy.xml
+config.status: creating config/type-apple.xml
+config.status: creating config/type-dejavu.xml
+config.status: creating config/type-ghostscript.xml
+config.status: creating config/type-urw-base35.xml
+config.status: creating config/type-urw-base35-type1.xml
+config.status: creating config/type-windows.xml
+config.status: creating config/type.xml
+config.status: creating ImageMagick.spec
+config.status: creating Magick++/bin/Magick++-config
+config.status: creating magick/ImageMagick.pc
+config.status: creating Magick++/lib/ImageMagick++.pc
+config.status: creating Magick++/lib/Magick++.pc
+config.status: creating magick/Magick-config
+config.status: creating magick/MagickCore-config
+config.status: creating magick/MagickCore.pc
+config.status: creating magick/version.h
+config.status: creating Makefile
+config.status: creating magick.sh
+config.status: creating PerlMagick/check.sh
+config.status: creating PerlMagick/default/Magick.pm
+config.status: creating PerlMagick/Makefile.PL
+config.status: creating PerlMagick/default/Makefile.PL
+config.status: creating PerlMagick/quantum/Makefile.PL
+config.status: creating PerlMagick/quantum/quantum.pm
+config.status: creating PerlMagick/quantum/quantum.xs
+config.status: creating PerlMagick/quantum/typemap
+config.status: creating utilities/animate.1
+config.status: creating utilities/compare.1
+config.status: creating utilities/composite.1
+config.status: creating utilities/conjure.1
+config.status: creating utilities/convert.1
+config.status: creating utilities/display.1
+config.status: creating utilities/identify.1
+config.status: creating utilities/ImageMagick.1
+config.status: creating utilities/import.1
+config.status: creating utilities/mogrify.1
+config.status: creating utilities/montage.1
+config.status: creating utilities/stream.1
+config.status: creating wand/MagickWand-config
+config.status: creating wand/MagickWand.pc
+config.status: creating wand/Wand-config
+config.status: creating wand/Wand.pc
+config.status: creating config/config.h
+config.status: executing magick/magick-baseconfig.h commands
+config.status: creating magick/magick-baseconfig.h - prefix MAGICKCORE for config/config.h defines
+config.status: executing depfiles commands
+config.status: executing libtool commands
+config.status: executing default commands
+config.status: executing magick.sh.in commands
+config.status: executing MagickCore-config.in commands
+config.status: executing Magick-config.in commands
+config.status: executing MagickWand-config.in commands
+config.status: executing Wand-config.in commands
+config.status: executing Magick++-config.in commands
+config.status: executing PerlMagick/check.sh.in commands
+configure:
+==============================================================================
+ImageMagick 6.9.13-57 is configured as follows. verify that this configuration
+matches your expectations.
+
+Host system type: x86_64-pc-linux-gnu
+Build system type: x86_64-pc-linux-gnu
+
+                    Option                              Value
+------------------------------------------------------------------------------
+Shared libraries    --enable-shared=yes		        yes
+Static libraries    --enable-static=no		        no
+Module support      --with-modules=no		        no
+GNU ld              --with-gnu-ld=yes		        yes
+OpenMP              --enable-openmp=no		        no
+Security policy     --with-security-policy=open	        open
+Quantum depth       --with-quantum-depth=16	        16
+High Dynamic Range Imagery
+                    --enable-hdri=no		        no
+
+Install documentation:				        no
+
+Memory allocation library:
+  JEMalloc          --with-jemalloc=no		        no
+  MTMalloc          --with-mtmalloc=no		        no
+  TCMalloc          --with-tcmalloc=no		        no
+  UMem              --with-umem=no		        no
+
+Delegate library configuration:
+  BZLIB             --with-bzlib=no		        no
+  Autotrace         --with-autotrace=no		        no
+  DJVU              --with-djvu=no		        no
+  DPS               --with-dps=no		        no
+  FFTW              --with-fftw=no		        no
+  FLIF              --with-flif=no		        no
+  FlashPIX          --with-fpx=no		        no
+  FontConfig        --with-fontconfig=no	        no
+  FreeType          --with-freetype=no		        no
+  Ghostscript lib   --with-gslib=no		        no
+  Graphviz          --with-gvc=no		        
+  HEIC              --with-heic=no		        no
+  JBIG              --with-jbig=no		        no
+  JPEG v1           --with-jpeg=no		        no
+  LCMS              --with-lcms=no		        no
+  LQR               --with-lqr=no		        no
+  LTDL              --with-ltdl=no		        no
+  LZMA              --with-lzma=no		        no
+  Magick++          --with-magick-plus-plus=no	        no
+  OpenEXR           --with-openexr=no		        no
+  OpenJP2           --with-openjp2=no		        no
+  PANGO             --with-pango=no		        no
+  PERL              --with-perl=no		        no
+  PNG               --with-png=yes		        yes
+  RAQM              --with-raqm=no		        no
+  RAW               --with-raw=no		        no
+  RSVG              --with-rsvg=no		        no
+  TIFF              --with-tiff=no		        no
+  WEBP              --with-webp=no		        no
+  WMF               --with-wmf=no		        no
+  X11               --with-x=no			        no
+  XML               --with-xml=no		        no
+  ZLIB              --with-zlib=yes		        yes
+  ZSTD              --with-zstd=no		        no
+
+Delegate program configuration:
+  GhostPCL          None			        pcl6 (unknown)
+  GhostXPS          None			        gxps (unknown)
+  Ghostscript       None			        gs (9.07)
+
+Font configuration:
+  Apple fonts       --with-apple-font-dir=default	
+  Dejavu fonts      --with-dejavu-font-dir=default	none
+  Ghostscript fonts --with-gs-font-dir=default		/usr/share/fonts/default/Type1/
+  URW OTF fonts     --with-urw-base35-font-dir=default	none
+  URW Type1 fonts   --with-urw-base35-type1-font-dir=default	none
+  Windows fonts     --with-windows-font-dir=default	none
+
+X11 configuration:
+  X_CFLAGS          = 
+  X_PRE_LIBS        = 
+  X_LIBS            = 
+  X_EXTRA_LIBS      = 
+
+Options used to compile and link:
+  PREFIX            = /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb
+  EXEC-PREFIX       = /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb
+  VERSION           = 6.9.13-57
+  CC                = /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc
+  CFLAGS            = -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -Wall -O2 -fPIC -mtune=core2 -fexceptions -pthread -DMAGICKCORE_HDRI_ENABLE=0 -DMAGICKCORE_QUANTUM_DEPTH=16
+  CPPFLAGS          = -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -DMAGICKCORE_HDRI_ENABLE=0 -DMAGICKCORE_QUANTUM_DEPTH=16
+  PCFLAGS           = 
+  DEFS              = -DHAVE_CONFIG_H
+  LDFLAGS           = -Wl,--exclude-libs,ALL
+  LIBS              = /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib/libpng16.a /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib/libz.a -lm /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib/libz.a -lm -lpthread 
+  CXX               = /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/g++
+  CXXFLAGS          = -O2 -fPIC -pthread
+  FEATURES          = Cipher DPC
+  DELEGATES         = png ps zlib
+==============================================================================
+
+BUILD /mnt/lustre/lizongshu/depends/make-4.4/bin/make -j 2
+/mnt/lustre/lizongshu/depends/make-4.4/bin/make  all-am
+make[1]: Entering directory '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57'
+  CC       utilities/compare.o
+  CC       utilities/composite.o
+  CC       utilities/conjure.o
+  CC       utilities/convert.o
+  CC       utilities/display.o
+  CC       utilities/identify.o
+  CC       utilities/import.o
+  CC       utilities/mogrify.o
+  CC       utilities/montage.o
+  CC       utilities/stream.o
+cp -f magick/ImageMagick.pc magick/ImageMagick-6.Q16.pc
+cp -f magick/MagickCore.pc magick/MagickCore-6.Q16.pc
+cp -f wand/MagickWand.pc wand/MagickWand-6.Q16.pc
+cp -f wand/Wand.pc wand/Wand-6.Q16.pc
+  CC       utilities/animate.o
+  CC       magick/libMagickCore_6_Q16_la-accelerate.lo
+  CC       magick/libMagickCore_6_Q16_la-animate.lo
+  CC       magick/libMagickCore_6_Q16_la-annotate.lo
+  CC       magick/libMagickCore_6_Q16_la-artifact.lo
+  CC       magick/libMagickCore_6_Q16_la-attribute.lo
+  CC       magick/libMagickCore_6_Q16_la-blob.lo
+  CC       magick/libMagickCore_6_Q16_la-cache.lo
+  CC       magick/libMagickCore_6_Q16_la-cache-view.lo
+  CC       magick/libMagickCore_6_Q16_la-channel.lo
+  CC       magick/libMagickCore_6_Q16_la-cipher.lo
+  CC       magick/libMagickCore_6_Q16_la-client.lo
+  CC       magick/libMagickCore_6_Q16_la-coder.lo
+  CC       magick/libMagickCore_6_Q16_la-color.lo
+  CC       magick/libMagickCore_6_Q16_la-colormap.lo
+  CC       magick/libMagickCore_6_Q16_la-colorspace.lo
+  CC       magick/libMagickCore_6_Q16_la-compare.lo
+  CC       magick/libMagickCore_6_Q16_la-composite.lo
+  CC       magick/libMagickCore_6_Q16_la-compress.lo
+  CC       magick/libMagickCore_6_Q16_la-configure.lo
+  CC       magick/libMagickCore_6_Q16_la-constitute.lo
+  CC       magick/libMagickCore_6_Q16_la-decorate.lo
+  CC       magick/libMagickCore_6_Q16_la-distribute-cache.lo
+  CC       magick/libMagickCore_6_Q16_la-delegate.lo
+  CC       magick/libMagickCore_6_Q16_la-deprecate.lo
+  CC       magick/libMagickCore_6_Q16_la-display.lo
+  CC       magick/libMagickCore_6_Q16_la-distort.lo
+  CC       magick/libMagickCore_6_Q16_la-draw.lo
+  CC       magick/libMagickCore_6_Q16_la-effect.lo
+  CC       magick/libMagickCore_6_Q16_la-enhance.lo
+  CC       magick/libMagickCore_6_Q16_la-exception.lo
+  CC       magick/libMagickCore_6_Q16_la-feature.lo
+  CC       magick/libMagickCore_6_Q16_la-fourier.lo
+  CC       magick/libMagickCore_6_Q16_la-fx.lo
+  CC       magick/libMagickCore_6_Q16_la-gem.lo
+  CC       magick/libMagickCore_6_Q16_la-geometry.lo
+  CC       magick/libMagickCore_6_Q16_la-hashmap.lo
+  CC       magick/libMagickCore_6_Q16_la-histogram.lo
+  CC       magick/libMagickCore_6_Q16_la-identify.lo
+  CC       magick/libMagickCore_6_Q16_la-image.lo
+  CC       magick/libMagickCore_6_Q16_la-image-view.lo
+  CC       magick/libMagickCore_6_Q16_la-layer.lo
+  CC       magick/libMagickCore_6_Q16_la-list.lo
+  CC       magick/libMagickCore_6_Q16_la-locale.lo
+  CC       magick/libMagickCore_6_Q16_la-log.lo
+  CC       magick/libMagickCore_6_Q16_la-magic.lo
+  CC       magick/libMagickCore_6_Q16_la-magick.lo
+  CC       magick/libMagickCore_6_Q16_la-matrix.lo
+  CC       magick/libMagickCore_6_Q16_la-memory.lo
+  CC       magick/libMagickCore_6_Q16_la-mime.lo
+  CC       magick/libMagickCore_6_Q16_la-module.lo
+  CC       magick/libMagickCore_6_Q16_la-monitor.lo
+  CC       magick/libMagickCore_6_Q16_la-montage.lo
+  CC       magick/libMagickCore_6_Q16_la-morphology.lo
+  CC       magick/libMagickCore_6_Q16_la-opencl.lo
+  CC       magick/libMagickCore_6_Q16_la-option.lo
+  CC       magick/libMagickCore_6_Q16_la-paint.lo
+  CC       magick/libMagickCore_6_Q16_la-pixel.lo
+  CC       magick/libMagickCore_6_Q16_la-policy.lo
+  CC       magick/libMagickCore_6_Q16_la-prepress.lo
+  CC       magick/libMagickCore_6_Q16_la-property.lo
+  CC       magick/libMagickCore_6_Q16_la-profile.lo
+  CC       magick/libMagickCore_6_Q16_la-quantize.lo
+  CC       magick/libMagickCore_6_Q16_la-quantum.lo
+  CC       magick/libMagickCore_6_Q16_la-quantum-export.lo
+  CC       magick/libMagickCore_6_Q16_la-quantum-import.lo
+  CC       magick/libMagickCore_6_Q16_la-random.lo
+  CC       magick/libMagickCore_6_Q16_la-registry.lo
+  CC       magick/libMagickCore_6_Q16_la-resample.lo
+  CC       magick/libMagickCore_6_Q16_la-resize.lo
+  CC       magick/libMagickCore_6_Q16_la-resource.lo
+  CC       magick/libMagickCore_6_Q16_la-segment.lo
+  CC       magick/libMagickCore_6_Q16_la-semaphore.lo
+  CC       magick/libMagickCore_6_Q16_la-shear.lo
+  CC       magick/libMagickCore_6_Q16_la-signature.lo
+  CC       magick/libMagickCore_6_Q16_la-splay-tree.lo
+  CC       magick/libMagickCore_6_Q16_la-static.lo
+  CC       magick/libMagickCore_6_Q16_la-statistic.lo
+  CC       magick/libMagickCore_6_Q16_la-stream.lo
+  CC       magick/libMagickCore_6_Q16_la-string.lo
+  CC       magick/libMagickCore_6_Q16_la-thread.lo
+  CC       magick/libMagickCore_6_Q16_la-timer.lo
+  CC       magick/libMagickCore_6_Q16_la-token.lo
+  CC       magick/libMagickCore_6_Q16_la-transform.lo
+  CC       magick/libMagickCore_6_Q16_la-threshold.lo
+  CC       magick/libMagickCore_6_Q16_la-type.lo
+  CC       magick/libMagickCore_6_Q16_la-utility.lo
+  CC       magick/libMagickCore_6_Q16_la-version.lo
+  CC       magick/libMagickCore_6_Q16_la-vision.lo
+  CC       magick/libMagickCore_6_Q16_la-visual-effects.lo
+  CC       magick/libMagickCore_6_Q16_la-widget.lo
+  CC       magick/libMagickCore_6_Q16_la-xml-tree.lo
+  CC       magick/libMagickCore_6_Q16_la-xwindow.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-aai.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-art.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-avs.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-bgr.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-bmp.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-braille.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-cals.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-caption.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-cin.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-cip.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-clip.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-cmyk.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-cut.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-dcm.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-dds.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-debug.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-dib.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-dng.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-dot.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-dpx.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-fax.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-fits.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-gif.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-gradient.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-gray.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-hald.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-hdr.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-histogram.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-hrz.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-html.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-icon.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-info.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-inline.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-ipl.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-jnx.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-json.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-label.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-mac.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-magick.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-map.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-mask.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-mat.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-matte.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-meta.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-miff.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-mono.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-mpc.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-mpr.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-msl.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-mtv.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-mvg.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-null.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-otb.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-palm.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-pango.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-pattern.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-pcd.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-pcl.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-pcx.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-pdb.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-pdf.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-pes.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-pgx.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-pict.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-pix.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-plasma.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-pnm.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-preview.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-ps.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-ps2.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-ps3.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-psd.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-pwp.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-raw.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-rgb.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-rgf.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-rla.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-rle.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-scr.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-screenshot.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-sct.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-sfw.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-sgi.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-sixel.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-stegano.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-sun.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-svg.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-tga.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-thumbnail.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-tile.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-tim.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-ttf.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-txt.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-uil.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-url.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-uyvy.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-vicar.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-vid.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-video.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-viff.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-vips.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-wbmp.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-wpg.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-xbm.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-xc.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-xcf.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-xpm.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-xps.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-ycbcr.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-yuv.lo
+  CC       coders/magick_libMagickCore_6_Q16_la-png.lo
+  CC       filters/magick_libMagickCore_6_Q16_la-analyze.lo
+  CC       wand/libMagickWand_6_Q16_la-animate.lo
+  CC       wand/libMagickWand_6_Q16_la-compare.lo
+  CC       wand/libMagickWand_6_Q16_la-composite.lo
+  CC       wand/libMagickWand_6_Q16_la-conjure.lo
+  CC       wand/libMagickWand_6_Q16_la-convert.lo
+  CC       wand/libMagickWand_6_Q16_la-deprecate.lo
+wand/deprecate.c: In function 'MagickColorFloodfillImage':
+wand/deprecate.c:1202:3: warning: 'ColorFloodfillImage' is deprecated [-Wdeprecated-declarations]
+ 1202 |   status=ColorFloodfillImage(wand->images,draw_info,target,x,y,
+      |   ^~~~~~
+In file included from ./magick/MagickCore.h:100,
+                 from ./wand/MagickWand.h:77,
+                 from ./wand/studio.h:198,
+                 from wand/deprecate.c:43:
+./magick/deprecate.h:185:3: note: declared here
+  185 |   ColorFloodfillImage(Image *,const DrawInfo *,const PixelPacket,const ssize_t,
+      |   ^~~~~~~~~~~~~~~~~~~
+wand/deprecate.c: In function 'MagickFlattenImages':
+wand/deprecate.c:1272:3: warning: 'FlattenImages' is deprecated [-Wdeprecated-declarations]
+ 1272 |   flatten_image=FlattenImages(wand->images,wand->exception);
+      |   ^~~~~~~~~~~~~
+./magick/deprecate.h:137:4: note: declared here
+  137 |   *FlattenImages(Image *,ExceptionInfo *) magick_attribute((deprecated)),
+      |    ^~~~~~~~~~~~~
+wand/deprecate.c: In function 'MagickMapImage':
+wand/deprecate.c:1596:3: warning: 'MapImage' is deprecated [-Wdeprecated-declarations]
+ 1596 |   status=MapImage(wand->images,map_wand->images,dither);
+      |   ^~~~~~
+./magick/deprecate.h:212:3: note: declared here
+  212 |   MapImage(Image *,const Image *,const MagickBooleanType)
+      |   ^~~~~~~~
+wand/deprecate.c: In function 'MagickMatteFloodfillImage':
+wand/deprecate.c:1668:3: warning: 'MatteFloodfillImage' is deprecated [-Wdeprecated-declarations]
+ 1668 |   status=MatteFloodfillImage(wand->images,target,ClampToQuantum(
+      |   ^~~~~~
+./magick/deprecate.h:216:3: note: declared here
+  216 |   MatteFloodfillImage(Image *,const PixelPacket,const Quantum,const ssize_t,
+      |   ^~~~~~~~~~~~~~~~~~~
+wand/deprecate.c: In function 'MagickMosaicImages':
+wand/deprecate.c:1843:3: warning: 'MosaicImages' is deprecated [-Wdeprecated-declarations]
+ 1843 |   mosaic_image=MosaicImages(wand->images,wand->exception);
+      |   ^~~~~~~~~~~~
+./magick/deprecate.h:142:4: note: declared here
+  142 |   *MosaicImages(Image *,ExceptionInfo *) magick_attribute((deprecated)),
+      |    ^~~~~~~~~~~~
+wand/deprecate.c: In function 'MagickOpaqueImage':
+wand/deprecate.c:1889:3: warning: 'MagickPaintOpaqueImage' is deprecated [-Wdeprecated-declarations]
+ 1889 |   return(MagickPaintOpaqueImage(wand,target,fill,fuzz));
+      |   ^~~~~~
+In file included from ./wand/MagickWand.h:83:
+./wand/deprecate.h:105:3: note: declared here
+  105 |   MagickPaintOpaqueImage(MagickWand *,const PixelWand *,const PixelWand *,
+      |   ^~~~~~~~~~~~~~~~~~~~~~
+wand/deprecate.c: In function 'MagickPaintOpaqueImage':
+wand/deprecate.c:1990:3: warning: 'MagickPaintOpaqueImageChannel' is deprecated [-Wdeprecated-declarations]
+ 1990 |   return(MagickPaintOpaqueImageChannel(wand,DefaultChannels,target,fill,fuzz));
+      |   ^~~~~~
+./wand/deprecate.h:107:3: note: declared here
+  107 |   MagickPaintOpaqueImageChannel(MagickWand *,const ChannelType,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+wand/deprecate.c: In function 'MagickRecolorImage':
+wand/deprecate.c:2136:3: warning: 'RecolorImage' is deprecated [-Wdeprecated-declarations]
+ 2136 |   transform_image=RecolorImage(wand->images,order,color_matrix,
+      |   ^~~~~~~~~~~~~~~
+./magick/deprecate.h:148:4: note: declared here
+  148 |   *RecolorImage(const Image *,const size_t,const double *,ExceptionInfo *)
+      |    ^~~~~~~~~~~~
+wand/deprecate.c: In function 'MagickTransparentImage':
+wand/deprecate.c:2380:3: warning: 'MagickPaintTransparentImage' is deprecated [-Wdeprecated-declarations]
+ 2380 |   return(MagickPaintTransparentImage(wand,target,alpha,fuzz));
+      |   ^~~~~~
+wand/deprecate.c:2042:30: note: declared here
+ 2042 | WandExport MagickBooleanType MagickPaintTransparentImage(MagickWand *wand,
+      |                              ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+  CC       wand/libMagickWand_6_Q16_la-display.lo
+  CC       wand/libMagickWand_6_Q16_la-drawing-wand.lo
+  CC       wand/libMagickWand_6_Q16_la-identify.lo
+  CC       wand/libMagickWand_6_Q16_la-import.lo
+  CC       wand/libMagickWand_6_Q16_la-magick-image.lo
+  CC       wand/libMagickWand_6_Q16_la-magick-property.lo
+  CC       wand/libMagickWand_6_Q16_la-magick-wand.lo
+  CC       wand/libMagickWand_6_Q16_la-mogrify.lo
+  CC       wand/libMagickWand_6_Q16_la-montage.lo
+  CC       wand/libMagickWand_6_Q16_la-pixel-iterator.lo
+  CC       wand/libMagickWand_6_Q16_la-pixel-wand.lo
+  CC       wand/libMagickWand_6_Q16_la-stream.lo
+  CC       wand/libMagickWand_6_Q16_la-wand.lo
+  CC       wand/libMagickWand_6_Q16_la-wand-view.lo
+  CCLD     magick/libMagickCore-6.Q16.la
+libtool: warning: Linking the shared library magick/libMagickCore-6.Q16.la against the static library /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib/libpng16.a is not portable!
+libtool: warning: Linking the shared library magick/libMagickCore-6.Q16.la against the static library /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/lib/libz.a is not portable!
+  CCLD     wand/libMagickWand-6.Q16.la
+  CCLD     utilities/animate
+  CCLD     utilities/compare
+  CCLD     utilities/composite
+  CCLD     utilities/conjure
+  CCLD     utilities/convert
+  CCLD     utilities/display
+  CCLD     utilities/identify
+  CCLD     utilities/import
+  CCLD     utilities/mogrify
+  CCLD     utilities/montage
+  CCLD     utilities/stream
+make[1]: Leaving directory '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57'
+BUILD /mnt/lustre/lizongshu/depends/make-4.4/bin/make install DESTDIR=/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging
+/mnt/lustre/lizongshu/depends/make-4.4/bin/make  install-am
+make[1]: Entering directory '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57'
+make[2]: Entering directory '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57'
+ /usr/bin/mkdir -p '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+ /bin/sh ./libtool   --mode=install /usr/bin/install -c   magick/libMagickCore-6.Q16.la wand/libMagickWand-6.Q16.la '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: install: /usr/bin/install -c magick/.libs/libMagickCore-6.Q16.so.7.0.1 /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib/libMagickCore-6.Q16.so.7.0.1
+libtool: install: (cd /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib && { ln -s -f libMagickCore-6.Q16.so.7.0.1 libMagickCore-6.Q16.so.7 || { rm -f libMagickCore-6.Q16.so.7 && ln -s libMagickCore-6.Q16.so.7.0.1 libMagickCore-6.Q16.so.7; }; })
+libtool: install: (cd /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib && { ln -s -f libMagickCore-6.Q16.so.7.0.1 libMagickCore-6.Q16.so || { rm -f libMagickCore-6.Q16.so && ln -s libMagickCore-6.Q16.so.7.0.1 libMagickCore-6.Q16.so; }; })
+libtool: install: /usr/bin/install -c magick/.libs/libMagickCore-6.Q16.lai /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib/libMagickCore-6.Q16.la
+libtool: warning: relinking 'wand/libMagickWand-6.Q16.la'
+libtool: install: (cd /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57; /bin/sh "/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57/libtool"  --silent --tag CC --mode=relink /mnt/lustre/lizongshu/depends/gcc-12.1.0/bin/gcc -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -I/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/static-delegates/include -Wall -O2 -fPIC -mtune=core2 -fexceptions -pthread -DMAGICKCORE_HDRI_ENABLE=0 -DMAGICKCORE_QUANTUM_DEPTH=16 -no-undefined -version-info 7:1:0 -Wl,--exclude-libs,ALL -o wand/libMagickWand-6.Q16.la -rpath /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib wand/libMagickWand_6_Q16_la-animate.lo wand/libMagickWand_6_Q16_la-compare.lo wand/libMagickWand_6_Q16_la-composite.lo wand/libMagickWand_6_Q16_la-conjure.lo wand/libMagickWand_6_Q16_la-convert.lo wand/libMagickWand_6_Q16_la-deprecate.lo wand/libMagickWand_6_Q16_la-display.lo wand/libMagickWand_6_Q16_la-drawing-wand.lo wand/libMagickWand_6_Q16_la-identify.lo wand/libMagickWand_6_Q16_la-import.lo wand/libMagickWand_6_Q16_la-magick-image.lo wand/libMagickWand_6_Q16_la-magick-property.lo wand/libMagickWand_6_Q16_la-magick-wand.lo wand/libMagickWand_6_Q16_la-mogrify.lo wand/libMagickWand_6_Q16_la-montage.lo wand/libMagickWand_6_Q16_la-pixel-iterator.lo wand/libMagickWand_6_Q16_la-pixel-wand.lo wand/libMagickWand_6_Q16_la-stream.lo wand/libMagickWand_6_Q16_la-wand.lo wand/libMagickWand_6_Q16_la-wand-view.lo magick/libMagickCore-6.Q16.la -lm -inst-prefix-dir /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging)
+libtool: install: /usr/bin/install -c wand/.libs/libMagickWand-6.Q16.so.7.0.1T /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib/libMagickWand-6.Q16.so.7.0.1
+libtool: install: (cd /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib && { ln -s -f libMagickWand-6.Q16.so.7.0.1 libMagickWand-6.Q16.so.7 || { rm -f libMagickWand-6.Q16.so.7 && ln -s libMagickWand-6.Q16.so.7.0.1 libMagickWand-6.Q16.so.7; }; })
+libtool: install: (cd /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib && { ln -s -f libMagickWand-6.Q16.so.7.0.1 libMagickWand-6.Q16.so || { rm -f libMagickWand-6.Q16.so && ln -s libMagickWand-6.Q16.so.7.0.1 libMagickWand-6.Q16.so; }; })
+libtool: install: /usr/bin/install -c wand/.libs/libMagickWand-6.Q16.lai /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib/libMagickWand-6.Q16.la
+libtool: warning: remember to run 'libtool --finish /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+ /usr/bin/mkdir -p '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/bin'
+  /bin/sh ./libtool   --mode=install /usr/bin/install -c utilities/animate utilities/compare utilities/composite utilities/conjure utilities/convert utilities/display utilities/identify utilities/import utilities/mogrify utilities/montage utilities/stream '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/bin'
+libtool: warning: 'magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: 'wand/libMagickWand-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57/magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: install: /usr/bin/install -c utilities/.libs/animate /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/bin/animate
+libtool: warning: 'magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: 'wand/libMagickWand-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57/magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: install: /usr/bin/install -c utilities/.libs/compare /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/bin/compare
+libtool: warning: 'magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: 'wand/libMagickWand-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57/magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: install: /usr/bin/install -c utilities/.libs/composite /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/bin/composite
+libtool: warning: 'magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: 'wand/libMagickWand-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57/magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: install: /usr/bin/install -c utilities/.libs/conjure /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/bin/conjure
+libtool: warning: 'magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: 'wand/libMagickWand-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57/magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: install: /usr/bin/install -c utilities/.libs/convert /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/bin/convert
+libtool: warning: 'magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: 'wand/libMagickWand-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57/magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: install: /usr/bin/install -c utilities/.libs/display /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/bin/display
+libtool: warning: 'magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: 'wand/libMagickWand-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57/magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: install: /usr/bin/install -c utilities/.libs/identify /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/bin/identify
+libtool: warning: 'magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: 'wand/libMagickWand-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57/magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: install: /usr/bin/install -c utilities/.libs/import /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/bin/import
+libtool: warning: 'magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: 'wand/libMagickWand-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57/magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: install: /usr/bin/install -c utilities/.libs/mogrify /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/bin/mogrify
+libtool: warning: 'magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: 'wand/libMagickWand-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57/magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: install: /usr/bin/install -c utilities/.libs/montage /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/bin/montage
+libtool: warning: 'magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: 'wand/libMagickWand-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: warning: '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57/magick/libMagickCore-6.Q16.la' has not been installed in '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib'
+libtool: install: /usr/bin/install -c utilities/.libs/stream /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/bin/stream
+ /usr/bin/mkdir -p '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/bin'
+ /usr/bin/install -c magick/Magick-config magick/MagickCore-config wand/Wand-config wand/MagickWand-config '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/bin'
+ /usr/bin/mkdir -p '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/etc/ImageMagick-6/'
+ /usr/bin/install -c -m 644 config/coder.xml config/colors.xml config/delegates.xml config/log.xml config/magic.xml config/mime.xml config/policy.xml config/quantization-table.xml config/thresholds.xml config/type.xml config/type-apple.xml config/type-dejavu.xml config/type-ghostscript.xml config/type-urw-base35.xml config/type-urw-base35-type1.xml config/type-windows.xml '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/etc/ImageMagick-6/'
+ /usr/bin/mkdir -p '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/share/ImageMagick-6'
+ /usr/bin/install -c -m 644 config/english.xml config/francais.xml config/locale.xml '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/share/ImageMagick-6'
+ /usr/bin/mkdir -p '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib/ImageMagick-6.9.13/config-Q16'
+ /usr/bin/install -c -m 644 config/configure.xml '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib/ImageMagick-6.9.13/config-Q16'
+ /usr/bin/mkdir -p '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/include/ImageMagick-6/magick'
+ /usr/bin/install -c -m 644 magick/ImageMagick.h magick/MagickCore.h magick/animate.h magick/annotate.h magick/api.h magick/artifact.h magick/attribute.h magick/blob.h magick/cache.h magick/cache-view.h magick/channel.h magick/cipher.h magick/client.h magick/coder.h magick/color.h magick/colormap.h magick/colorspace.h magick/compare.h magick/composite.h magick/compress.h magick/configure.h magick/constitute.h magick/decorate.h magick/delegate.h magick/deprecate.h magick/display.h magick/distribute-cache.h magick/distort.h magick/draw.h magick/effect.h magick/enhance.h magick/exception.h magick/feature.h magick/fourier.h magick/fx.h magick/gem.h magick/geometry.h magick/hashmap.h magick/histogram.h magick/identify.h '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/include/ImageMagick-6/magick'
+ /usr/bin/install -c -m 644 magick/image.h magick/image-view.h magick/layer.h magick/list.h magick/locale_.h magick/log.h magick/magic.h magick/magick.h magick/magick-config.h magick/magick-type.h magick/matrix.h magick/memory_.h magick/methods.h magick/method-attribute.h magick/mime.h magick/module.h magick/monitor.h magick/montage.h magick/morphology.h magick/opencl.h magick/option.h magick/paint.h magick/pixel.h magick/pixel-accessor.h magick/policy.h magick/prepress.h magick/profile.h magick/property.h magick/quantize.h magick/quantum.h magick/random_.h magick/registry.h magick/resample.h magick/resize.h magick/resource_.h magick/segment.h magick/semaphore.h magick/shear.h magick/signature.h magick/splay-tree.h '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/include/ImageMagick-6/magick'
+ /usr/bin/install -c -m 644 magick/static.h magick/statistic.h magick/stream.h magick/string_.h magick/studio.h magick/timer.h magick/token.h magick/transform.h magick/threshold.h magick/type.h magick/utility.h magick/version.h magick/vision.h magick/visual-effects.h magick/widget.h magick/xml-tree.h magick/xwindow.h '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/include/ImageMagick-6/magick'
+ /usr/bin/mkdir -p '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/include/ImageMagick-6/magick'
+ /usr/bin/install -c -m 644 magick/magick-baseconfig.h '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/include/ImageMagick-6/magick'
+ /usr/bin/mkdir -p '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib/pkgconfig'
+ /usr/bin/install -c -m 644 magick/ImageMagick.pc magick/ImageMagick-6.Q16.pc magick/MagickCore.pc magick/MagickCore-6.Q16.pc wand/MagickWand.pc wand/Wand.pc wand/MagickWand-6.Q16.pc wand/Wand-6.Q16.pc '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib/pkgconfig'
+ /usr/bin/mkdir -p '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/include/ImageMagick-6/wand'
+ /usr/bin/install -c -m 644 wand/MagickWand.h wand/animate.h wand/compare.h wand/composite.h wand/conjure.h wand/convert.h wand/deprecate.h wand/display.h wand/drawing-wand.h wand/identify.h wand/import.h wand/magick-image.h wand/magick-property.h wand/magick-wand.h wand/magick_wand.h wand/method-attribute.h wand/mogrify.h wand/montage.h wand/pixel-iterator.h wand/pixel-wand.h wand/stream.h wand/wand-view.h '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/include/ImageMagick-6/wand'
+make[2]: Leaving directory '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57'
+make[1]: Leaving directory '/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/ImageMagick-6.9.13-57'
+BUILD /mnt/lustre/lizongshu/depends/local/bin/patchelf --force-rpath --set-rpath /mnt/lustre/lizongshu/depends/glibc-2.35/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/native-libs:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/torch/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cublas/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cuda_cupti/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cuda_nvrtc/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cuda_runtime/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cudnn/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cufft/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/curand/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cusolver/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cusparse/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cusparselt/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/nccl/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/nvjitlink/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/nvtx/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/npp/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cufile/lib:/mnt/lustre/lizongshu/depends/nvidia-driver-libs:/mnt/lustre/lizongshu/depends/anaconda3/envs/lerobot310/lib /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib/libMagickCore-6.Q16.so.7.0.1
+BUILD /mnt/lustre/lizongshu/depends/local/bin/patchelf --force-rpath --set-rpath /mnt/lustre/lizongshu/depends/glibc-2.35/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/native-libs:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/torch/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cublas/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cuda_cupti/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cuda_nvrtc/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cuda_runtime/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cudnn/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cufft/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/curand/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cusolver/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cusparse/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cusparselt/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/nccl/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/nvjitlink/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/nvtx/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/npp/lib:/mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/nvidia/cufile/lib:/mnt/lustre/lizongshu/depends/nvidia-driver-libs:/mnt/lustre/lizongshu/depends/anaconda3/envs/lerobot310/lib /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/imagemagick-build/work-vnck7veb/staging/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib/libMagickWand-6.Q16.so.7.0.1
+BUILD /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/bin/python -I -B -u -c '
+import ctypes, io, pathlib, sys, zlib
+import xml.etree.ElementTree as ET
+import numpy as np
+import cv2
+from PIL import Image
+ET.fromstring('"'"'<root/>'"'"')
+assert zlib.decompress(zlib.compress(b'"'"'before Wand'"'"')) == b'"'"'before Wand'"'"'
+from wand.api import library
+from wand.image import Image as WandImage
+from wand.version import MAGICK_VERSION
+prefix = pathlib.Path(sys.argv[1]).resolve()
+assert pathlib.Path(library._name).resolve().parent == prefix / '"'"'lib'"'"', library._name
+print('"'"'MagickWand:'"'"', library._name, flush=True)
+print(MAGICK_VERSION, flush=True)
+pixels = np.zeros((224, 224, 3), dtype=np.uint8)
+pixels[40:180, 80:145] = [255, 60, 120]
+output = io.BytesIO()
+Image.fromarray(pixels).save(output, format='"'"'PNG'"'"')
+library.MagickMotionBlurImage.argtypes = (
+    ctypes.c_void_p, ctypes.c_double, ctypes.c_double, ctypes.c_double)
+with WandImage(blob=output.getvalue()) as image:
+    if not library.MagickMotionBlurImage(image.wand, 5.0, 2.0, 20.0):
+        image.raise_exception()
+        raise RuntimeError('"'"'MagickMotionBlurImage returned false'"'"')
+    result = cv2.imdecode(np.frombuffer(image.make_blob(), np.uint8), cv2.IMREAD_UNCHANGED)
+    assert result is not None and result.shape == pixels.shape, getattr(result, '"'"'shape'"'"', None)
+    result = result[..., [2, 1, 0]]
+    assert np.any(result != pixels), '"'"'Motion blur did not modify test image'"'"'
+ET.fromstring('"'"'<root/>'"'"')
+assert zlib.decompress(zlib.compress(b'"'"'after Wand'"'"')) == b'"'"'after Wand'"'"'
+print('"'"'PASS private Wand PNG -> motion blur -> PNG/OpenCV; Python XML/zlib intact'"'"', flush=True)
+' /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb
+MagickWand: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb/lib/libMagickWand-6.Q16.so
+ImageMagick 6.9.13-57 Q16 x86_64 19759 https://legacy.imagemagick.org
+PASS private Wand PNG -> motion blur -> PNG/OpenCV; Python XML/zlib intact
+BUILT private ImageMagick: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb
+BUILD /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/bin/python -I /mnt/lustre/lizongshu/projects/FasterWAM/scripts/setup/centos7/runtime.py refresh-shell --state /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/state.json
+Refreshed activate.sh, bin/uv and run for libero-plus; Python and packages were not changed.
+MAGICK_HOME=/mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/private-imagemagick/v6.9.13-57-vnck7veb
+Runtime launchers refreshed. Start a fresh run command or re-source activate.sh.
+SKIP actual video decoding: supply --video /path/to/video.mp4 to test it.
+    Python: /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/bin/python
+    prefix: /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus
+    base: /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/python-base
+    glibc: 2.35
+    PT_INTERP: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/ld-linux-x86-64.so.2
+    mapped: /mnt/lustre/lizongshu/depends/glibc-2.35/lib/ld-linux-x86-64.so.2, /mnt/lustre/lizongshu/depends/glibc-2.35/lib/libc.so.6
+PASS private runtime / ELF / environment
+    child: /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/bin/python (glibc 2.35)
+PASS Python and system-shell subprocesses
+PASS multiprocessing spawn
+    torch==2.7.1+cu128
+    torchvision==0.22.1+cu128
+    pyarrow==23.0.0
+    av==16.0.1
+    transformers==4.49.0
+    datasets==3.6.0
+    accelerate==1.12.0
+    h5py==3.14.0
+    mujoco==3.3.2
+[robosuite WARNING] No private macro file found! (__init__.py:7)
+[robosuite WARNING] It is recommended to use a private macro file (__init__.py:8)
+[robosuite WARNING] To setup, run: python /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/robosuite/scripts/setup_macros.py (__init__.py:9)
+    robosuite==1.4.0
+    wand==0.6.13
+    libero==0.1.0 (metadata only)
+    Wand / native MagickWand import passed
+PASS pinned packages / native imports
+    /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/triton/backends/nvidia/bin/ptxas: ptxas: NVIDIA (R) Ptx optimizing assembler
+PASS native helper execution
+    CUDA 12.8: NVIDIA A800-SXM4-80GB
+PASS PyTorch execution
+    MuJoCo render passed with MUJOCO_GL=egl
+PASS MuJoCo rendering
+Doctor finished: 7 passed, 0 failed.
+Ready: source /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/activate.sh

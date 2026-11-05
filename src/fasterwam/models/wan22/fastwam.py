@@ -1170,6 +1170,8 @@ class FastWAM(torch.nn.Module):
         )
 
     def save_checkpoint(self, path, optimizer=None, step=None):
+        from fasterwam.utils.lora_checkpoint import get_lora_checkpoint_metadata
+
         payload = {
             "mot": self.mot.state_dict(),
             "step": step,
@@ -1179,28 +1181,15 @@ class FastWAM(torch.nn.Module):
             payload["proprio_encoder"] = self.proprio_encoder.state_dict()
         if optimizer is not None:
             payload["optimizer"] = optimizer.state_dict()
+        payload.update(get_lora_checkpoint_metadata(self))
         torch.save(payload, path)
 
-    def load_checkpoint(self, path, optimizer=None):
-        payload = torch.load(path, map_location="cpu")
-        if "mot" in payload:
-            self.mot.load_state_dict(payload["mot"], strict=False)
-        elif "dit" in payload:
-            logger.warning("Loading legacy `dit` checkpoint into video expert only.")
-            self.video_expert.load_state_dict(payload["dit"], strict=False)
-        else:
-            raise ValueError(f"Checkpoint missing both `mot` and `dit` keys: {path}")
-        if self.proprio_encoder is not None:
-            if "proprio_encoder" in payload:
-                self.proprio_encoder.load_state_dict(payload["proprio_encoder"], strict=True)
-            else:
-                logger.warning("Checkpoint has no `proprio_encoder` weights; keeping current `proprio_encoder` params.")
-        elif "proprio_encoder" in payload:
-            logger.warning("Checkpoint contains `proprio_encoder` weights but current model has `proprio_dim=None`; ignoring.")
+    def load_checkpoint(self, path, optimizer=None, *, lora_config_policy="checkpoint"):
+        from fasterwam.utils.lora_checkpoint import load_fastwam_checkpoint
 
-        if optimizer is not None and "optimizer" in payload:
-            optimizer.load_state_dict(payload["optimizer"])
-        return payload
+        return load_fastwam_checkpoint(
+            self, path, optimizer=optimizer, lora_config_policy=lora_config_policy,
+        )
 
     def forward(self, *args, **kwargs):
         return self.training_loss(*args, **kwargs)
