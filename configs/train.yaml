@@ -15,7 +15,12 @@ num_workers: 4
 
 # scheduler
 lr_scheduler_type: "cosine"
+# Legacy shared default; explicit component overrides take precedence.
 learning_rate: 1.0e-4
+learning_rates:
+  video: ${learning_rate}
+  action: ${learning_rate}  # Includes the shared proprio encoder.
+  fusion: ${learning_rate}  # SparseMoT video_kv_fusion_logits.
 num_epochs: 1
 max_steps: null
 log_every: 10
