@@ -399,7 +399,7 @@ class LoraTrainingTests(unittest.TestCase):
             events.append(f"inject_{branch}")
             return configure_expert_lora(expert, config, branch=branch)
 
-        video_config = {"text_dim": 2, "lora": adapter_config(), "freeze": True}
+        video_config = {"text_dim": 2, "num_layers": 1, "lora": adapter_config(), "freeze": True}
         action_config = {"num_layers": 1, "lora": adapter_config(), "freeze": True}
         original = deepcopy((video_config, action_config))
         with patch.object(factory_module, "load_wan22_ti2v_5b_components", side_effect=load_video), \

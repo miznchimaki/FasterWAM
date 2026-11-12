@@ -19,6 +19,7 @@ import zipfile
 import torch
 
 from .lora_checkpoint import _read_lora_metadata
+from .action_layout_checkpoint import copy_action_layout_metadata
 
 
 _MERGE_DTYPES = {torch.float32, torch.float16, torch.bfloat16}
@@ -154,6 +155,7 @@ def merge_lora_checkpoint_payload(payload: Mapping) -> dict:
     scheduler, and other training state are deliberately absent from the result.
     """
     configs, layers, dense_keys = _validate_payload(payload)
+    layout_metadata = copy_action_layout_metadata(payload)
     state = {key: value for key, value in payload["mot"].items() if key in dense_keys}
     for path, weights in layers.items():
         config = configs[path.split(".")[1]]
@@ -169,6 +171,7 @@ def merge_lora_checkpoint_payload(payload: Mapping) -> dict:
         if "base_layer.bias" in weights:
             state[path + ".bias"] = weights["base_layer.bias"]
     result = {"mot": state}
+    result.update(layout_metadata)
     for key in ("step", "torch_dtype", "proprio_encoder"):
         if key in payload:
             result[key] = payload[key]

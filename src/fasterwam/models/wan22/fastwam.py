@@ -1170,6 +1170,7 @@ class FastWAM(torch.nn.Module):
         )
 
     def save_checkpoint(self, path, optimizer=None, step=None):
+        from fasterwam.utils.action_layout_checkpoint import get_action_layout_metadata
         from fasterwam.utils.lora_checkpoint import get_lora_checkpoint_metadata
 
         payload = {
@@ -1181,6 +1182,7 @@ class FastWAM(torch.nn.Module):
             payload["proprio_encoder"] = self.proprio_encoder.state_dict()
         if optimizer is not None:
             payload["optimizer"] = optimizer.state_dict()
+        payload.update(get_action_layout_metadata(self))
         payload.update(get_lora_checkpoint_metadata(self))
         torch.save(payload, path)
 

@@ -20,6 +20,7 @@ from .utils.deepspeed_utils import (
     get_deepspeed_config,
     get_deepspeed_stage,
 )
+from .utils.action_layout_checkpoint import get_action_layout_metadata, validate_action_layout_metadata
 from .utils.fs import ensure_dir
 from .utils.logging_config import get_logger, setup_logging
 from .utils.learning_rates import CosineDecay, build_component_param_groups, resolve_learning_rates
@@ -142,6 +143,7 @@ class Wan22Trainer:
             raise ValueError("Training configuration selected no trainable parameters.")
         # Capture before ZeRO replaces full parameter shapes with partitions.
         self.training_lora_config = get_lora_checkpoint_metadata(self.model).get("lora")
+        self.training_action_layout = get_action_layout_metadata(self.model)
         self.training_has_frozen_expert = any(
             get_expert_freeze(expert) and not get_expert_lora_config(expert)["enabled"]
             for expert in experts
@@ -414,6 +416,7 @@ class Wan22Trainer:
             return
         state_file = Path(str(self.resume)) / "trainer_state.json"
         if not state_file.exists():
+            validate_action_layout_metadata(self.model, {})
             if self.training_lora_config is not None or self.training_has_frozen_expert:
                 raise ValueError(
                     "LoRA/freeze full-state resume requires trainer_state.json with matching "
@@ -422,6 +425,7 @@ class Wan22Trainer:
             return
         with state_file.open(encoding="utf-8") as handle:
             saved = json.load(handle)
+        validate_action_layout_metadata(self.model, saved)
         if saved.get("lora") != self.training_lora_config:
             raise ValueError(
                 "Full-state resume LoRA configuration mismatch. Restore the original expert "
@@ -754,6 +758,7 @@ class Wan22Trainer:
             "trainable_parameters": self.trainable_parameter_spec,
             "optimizer_groups": self.optimizer_group_spec,
         }
+        payload.update(self.training_action_layout)
         with open(state_file, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=True, indent=2)
 
