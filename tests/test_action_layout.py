@@ -13,6 +13,7 @@ class ActionLayoutTests(unittest.TestCase):
         self.assertEqual(layout.action_condition_layers, tuple(conditions))
         self.assertEqual(layout.noncondition_layers_per_interval, (3,) * 7)
         self.assertEqual(layout.trailing_noncondition_layers, 1)
+        self.assertEqual(layout.leading_noncondition_layers, 0)
         self.assertEqual(layout.num_action_layers, 30)
 
     def test_uniform_and_per_interval_counts(self):
@@ -31,8 +32,28 @@ class ActionLayoutTests(unittest.TestCase):
         layout = resolve_action_layout(9, [2, 5], 1, 2)
         self.assertEqual(layout.action_layer_indices, (0, 1, 2, 3, 5, 6, 7))
         self.assertEqual(layout.action_condition_layers, (2, 4))
+        self.assertEqual(layout.leading_noncondition_layers, 2)
         self.assertEqual(resolve_action_layout(5, [0, 4], 1, 0).action_layer_indices, (0, 1, 4))
         self.assertEqual(resolve_action_layout(1, [0], [], 0).num_action_layers, 1)
+
+    def test_leading_count_defaults_and_local_condition_remapping(self):
+        for count, prefix in ((None, (0, 1, 2, 3, 4)), (5, (0, 1, 2, 3, 4)),
+                              (2, (0, 1)), (0, ())):
+            with self.subTest(count=count):
+                layout = resolve_action_layout(12, [5, 9], 1, 1, count)
+                self.assertEqual(layout.action_layer_indices, prefix + (5, 6, 9, 10))
+                self.assertEqual(layout.action_condition_layers, (len(prefix), len(prefix) + 2))
+                self.assertEqual(layout.leading_noncondition_layers, len(prefix))
+        self.assertEqual(resolve_action_layout(6, [5], [], 0, 0).action_layer_indices, (5,))
+        self.assertEqual(resolve_action_layout(1, [0], [], 0, 0).action_condition_layers, (0,))
+
+    def test_invalid_leading_counts_fail(self):
+        for first, value in ((0, 1), (5, 6), (5, -1), (5, True), (5, False),
+                             (5, 1.0), (5, "2"), (5, [2])):
+            with self.subTest(first=first, value=value), self.assertRaisesRegex(
+                ValueError, "action_leading_noncondition_layers",
+            ):
+                resolve_action_layout(12, [first, 9], leading_noncondition_layers=value)
 
     def test_invalid_conditions_and_counts_fail_early(self):
         cases = [

@@ -1,17 +1,22 @@
 # Compact action DiT
 
 FasterWAM can retain every video DiT layer while reducing the action-only
-refinement blocks between condition layers. The default model is unchanged:
+refinement blocks before, between, and after condition layers. The default model is unchanged:
 30 video layers, 30 action layers, and condition layers at video indices
 `[0, 4, 8, 12, 16, 20, 24, 28]`.
 
-`configs/model/fasterwam.yaml` exposes two new Hydra options:
+`configs/model/fasterwam.yaml` exposes three Hydra options:
 
 ```yaml
+action_leading_noncondition_layers: null
 action_noncondition_layers_per_interval: null
 action_trailing_noncondition_layers: null
 ```
 
+- `action_leading_noncondition_layers`: `null` retains all layers before the
+  first condition layer; an integer sets their count. It must satisfy
+  `0 <= count <= first_condition`. When the first condition index is 0,
+  only `null` or 0 is valid, and both mean no leading action layers.
 - `action_noncondition_layers_per_interval`: `null` retains all available
   non-condition layers; an integer applies the same count to every gap; a
   list supplies one count for each adjacent condition pair.
@@ -23,12 +28,11 @@ action_trailing_noncondition_layers: null
   `1 <= count <= next_condition - current_condition - 1`.
 - The tail must satisfy `0 <= count <= video_num_layers - last_condition - 1`.
   Counts must be integers, not booleans or floating-point values. A list must
-  contain exactly `len(condition_layers) - 1` entries. If the first condition
-  index is nonzero, all original leading action-only layers are retained.
+  contain exactly `len(condition_layers) - 1` entries.
 
 The existing `action_dit_config.num_layers` remains the **dense reference
 depth** and must match the video depth. Do not manually lower it: the factory
-derives the actual action depth from the interval/tail settings and logs both
+derives the actual action depth from the leading/interval/tail settings and logs both
 depths and the complete local-to-video mapping.
 
 For 30 video layers, representative layouts are:
@@ -65,6 +69,23 @@ condition indices gives 11 action layers including the default tail of 1.
 All LoRA, freeze, learning-rate, batch-size and other experiment settings
 continue to come from the existing configuration and overrides.
 
+For a nonzero first condition index, the following keeps two leading action
+layers, one layer per gap, and one trailing layer (10 action layers total):
+
+```bash
+model.action_dit_pretrained_path=null \
+'model.condition_layers=[5,12,24,28]' \
+model.action_leading_noncondition_layers=2 \
+model.action_noncondition_layers_per_interval=1 \
+model.action_trailing_noncondition_layers=1
+```
+
+Here the action-to-video mapping is `[0,1,5,6,12,13,24,25,28,29]`, so video
+condition index 5 corresponds to local action index 2 (the third action layer).
+With leading=`null` (or 5), it would be the sixth action layer; with leading=0,
+it is the first action layer. All video layers 0 through 5 still contribute
+to the first fused K/V when interval fusion is enabled.
+
 ## Execution and initialization
 
 The action model stores only retained blocks in a contiguous `ModuleList`.
@@ -75,8 +96,8 @@ of one give this mapping from local action index to video index:
 [0,1,4,5,8,9,12,13,16,17,20,21,24,25,28,29]
 ```
 
-Local action condition indices are then `[0,2,4,6,8,10,12,14]`. Within each
-gap, retained action-only blocks use the first available video slots. They
+Local action condition indices are then `[0,2,4,6,8,10,12,14]`. Within the leading
+region, each gap, and the tail, retained action-only blocks use the first available video slots. They
 do not read those slots' video states; the placement defines a deterministic
 mapping and which weights are retained when using a dense pretrained backbone.
 

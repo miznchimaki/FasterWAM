@@ -11,6 +11,7 @@ from omegaconf import OmegaConf
 import torch
 
 import fasterwam.trainer as trainer_module
+from fasterwam.models.wan22.action_layout import resolve_action_layout
 from fasterwam.utils.action_layout_checkpoint import get_action_layout_metadata
 from fasterwam.utils.deepspeed_utils import build_weights_checkpoint_payload
 from fasterwam.utils.lora_merge import merge_lora_checkpoint_payload
@@ -69,6 +70,26 @@ class ActionLayoutCheckpointTests(unittest.TestCase):
         ):
             with self.subTest(changes=changes):
                 self.assert_rejected_without_mutation(set_layout(TinyPolicy(), **changes))
+
+    def test_removed_prefix_layout_roundtrip_and_same_depth_mismatch(self):
+        without_prefix = resolve_action_layout(8, [2, 5], 1, 1, leading_noncondition_layers=0)
+        with_prefix = resolve_action_layout(8, [2, 5], 1, 0, leading_noncondition_layers=1)
+        self.assertEqual(without_prefix.num_action_layers, with_prefix.num_action_layers)
+        source = set_layout(
+            TinyPolicy(action_rank=2), indices=without_prefix.action_layer_indices,
+            conditions=(2, 5), video_depth=8,
+        )
+        source.save_checkpoint(self.path)
+        matching = set_layout(
+            TinyPolicy(), indices=without_prefix.action_layer_indices, conditions=(2, 5), video_depth=8,
+        )
+        matching.load_checkpoint(self.path)
+        for name, value in source.mot.state_dict().items():
+            torch.testing.assert_close(value, matching.mot.state_dict()[name], rtol=0, atol=0)
+        wrong_prefix = set_layout(
+            TinyPolicy(), indices=with_prefix.action_layer_indices, conditions=(2, 5), video_depth=8,
+        )
+        self.assert_rejected_without_mutation(wrong_prefix)
 
     def test_compact_metadata_required_but_identity_legacy_payload_unchanged(self):
         source = set_layout(TinyPolicy())

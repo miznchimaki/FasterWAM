@@ -8,13 +8,14 @@ from unittest.mock import patch
 import torch
 from torch import nn
 
+from fasterwam.models.wan22.action_layout import resolve_action_layout
 from fasterwam.models.wan22.sparse_action_dit import SparseActionDiT
 from fasterwam.models.wan22.sparse_mot import SparseMoT
 from fasterwam.models.wan22.wan_video_dit import WanVideoDiT
 from test_lora import forward_mot, inputs_for
 
 
-def dense_mot(*, fusion, checkpoint=False, mapping=None):
+def dense_mot(*, fusion, checkpoint=False, mapping=None, conditions=(0, 3)):
     video = WanVideoDiT(
         hidden_dim=16, in_dim=4, ffn_dim=32, out_dim=4, text_dim=12,
         freq_dim=8, eps=1e-6, patch_size=(1, 1, 1), num_heads=2,
@@ -25,11 +26,11 @@ def dense_mot(*, fusion, checkpoint=False, mapping=None):
     action = SparseActionDiT(
         hidden_dim=8, action_dim=3, ffn_dim=16, text_dim=12, freq_dim=8,
         eps=1e-6, num_heads=2, attn_head_dim=8, num_layers=6,
-        noncondition_num_heads=1, condition_layers=[0, 3],
+        noncondition_num_heads=1, condition_layers=conditions,
         use_gradient_checkpointing=checkpoint,
     )
     return SparseMoT(
-        {"video": video, "action": action}, condition_layers=[0, 3],
+        {"video": video, "action": action}, condition_layers=conditions,
         video_kv_fusion=fusion, mot_checkpoint_mixed_attn=checkpoint,
         action_layer_indices=mapping,
     )
@@ -188,6 +189,50 @@ class CompactSparseMoTTests(unittest.TestCase):
         wrong_local_conditions["action"].condition_layers = (0, 3)
         with self.assertRaisesRegex(ValueError, "local condition"):
             SparseMoT(wrong_local_conditions, condition_layers=[0, 3], action_layer_indices=[0, 1, 3, 4])
+
+    def test_removed_leading_layers_preserve_forward_gradients_and_video_cache(self):
+        for fusion in (None, "interval_weighted_sum"):
+            for leading in (0, 1):
+                for checkpoint in (False, True):
+                    with self.subTest(fusion=fusion, leading=leading, checkpoint=checkpoint):
+                        torch.manual_seed(53)
+                        dense = dense_mot(fusion=fusion, checkpoint=checkpoint, conditions=(2, 5))
+                        for logits in dense.video_kv_fusion_logits:
+                            with torch.no_grad():
+                                logits.zero_()
+                        layout = resolve_action_layout(
+                            6, [2, 5], 1, 0, leading_noncondition_layers=leading,
+                        )
+                        compact = compact_from(dense, layout.action_layer_indices)
+                        for index in set(range(6)) - set(layout.action_layer_indices):
+                            zero_refinement_updates(dense.mixtures["action"].blocks[index])
+                        inputs = inputs_for(torch.float32)
+                        reference_inputs = tuple(item.detach().clone().requires_grad_() for item in inputs)
+                        compact_inputs = tuple(item.detach().clone().requires_grad_() for item in inputs)
+                        expected = forward_mot(dense, reference_inputs)
+                        actual = forward_mot(compact, compact_inputs)
+                        for wanted, got in zip(expected, actual):
+                            torch.testing.assert_close(got, wanted, rtol=2e-5, atol=2e-6)
+                        sum(output.square().mean() for output in expected).backward()
+                        sum(output.square().mean() for output in actual).backward()
+                        dense_parameters = dict(dense.named_parameters())
+                        for name, parameter in compact.named_parameters():
+                            wanted = dense_parameters[dense_parameter_name(name, layout.action_layer_indices)].grad
+                            if wanted is None:
+                                self.assertIsNone(parameter.grad, name)
+                            else:
+                                self.assertIsNotNone(parameter.grad, name)
+                                torch.testing.assert_close(parameter.grad, wanted, rtol=3e-4, atol=3e-6, msg=name)
+                        for wanted, got in zip(reference_inputs, compact_inputs):
+                            torch.testing.assert_close(got.grad, wanted.grad, rtol=3e-4, atol=3e-6)
+                        cached = forward_mot(compact, inputs, cached=True)
+                        torch.testing.assert_close(cached, actual[1], rtol=2e-5, atol=2e-6)
+                        self.assertEqual(compact.mixtures["action"].condition_layers, (leading, leading + 2))
+                        # Removing action prefix blocks must not remove video K/V
+                        # from the first condition's fusion interval.
+                        self.assertEqual(compact.condition_intervals, ((0, 1, 2), (3, 4, 5)))
+                        if fusion is not None:
+                            self.assertEqual([logits.numel() for logits in compact.video_kv_fusion_logits], [3, 3])
 
     def test_layer_specific_masks_use_video_indices_in_joint_and_cache_paths(self):
         def run_with_distinct_masks(mot, inputs, *, cached=False):

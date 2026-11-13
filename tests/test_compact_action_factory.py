@@ -118,6 +118,48 @@ class CompactActionFactoryTests(unittest.TestCase):
                 torch.testing.assert_close(value, source.blocks[original_index].state_dict()[name], rtol=0, atol=0)
         self.assertTrue(all(isinstance(block, nn.Module) for block in model.action_expert.blocks))
 
+    def test_leading_reduction_allocates_random_model_with_local_condition_indices(self):
+        for count, expected in ((0, (2, 3, 5, 6, 8, 9)), (1, (0, 2, 3, 5, 6, 8, 9))):
+            with self.subTest(count=count), patch.object(
+                SparseActionDiT, "from_pretrained", wraps=SparseActionDiT.from_pretrained,
+            ) as loader:
+                model = self.build(
+                    condition_layers=[2, 5, 8], action_leading_noncondition_layers=count,
+                    action_noncondition_layers_per_interval=1,
+                )
+                self.assertEqual(model.action_layer_indices, expected)
+                self.assertEqual(loader.call_args.kwargs["action_dit_config"]["num_layers"], len(expected))
+                self.assertEqual(model.action_expert.condition_layers, (count, count + 2, count + 4))
+                self.assertEqual(model.mot.condition_intervals[0], (0, 1, 2))
+
+    def test_pretrained_leading_reduction_selects_original_global_blocks(self):
+        video, action = tiny_configs()
+        action["condition_layers"] = [2, 5, 8]
+        source = SparseActionDiT(**action)
+        state = source.state_dict()
+        payload = {
+            "meta": {key: action[key] for key in SparseActionDiT.ACTION_BACKBONE_META_KEYS},
+            "backbone_state_dict": {key: state[key] for key in SparseActionDiT.backbone_key_set(state)},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "dense-leading-backbone.pt")
+            torch.save(payload, path)
+            for count in (0, 1):
+                with self.subTest(count=count):
+                    model = self.build(
+                        video=video, action=action, action_dit_pretrained_path=str(path),
+                        action_leading_noncondition_layers=count,
+                        action_noncondition_layers_per_interval=1,
+                    )
+                    expected = tuple(range(count)) + (2, 3, 5, 6, 8, 9)
+                    self.assertEqual(model.action_layer_indices, expected)
+                    self.assertEqual(model.action_expert.condition_layers, (count, count + 2, count + 4))
+                    for local_index, video_index in enumerate(expected):
+                        for name, value in model.action_expert.blocks[local_index].state_dict().items():
+                            torch.testing.assert_close(
+                                value, source.blocks[video_index].state_dict()[name], rtol=0, atol=0,
+                            )
+
     @staticmethod
     def legacy_default_model():
         # Reference the pre-compaction construction order explicitly. In
@@ -199,6 +241,9 @@ class CompactActionFactoryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.build(action_noncondition_layers_per_interval=[4, 1])
         self.loader_mock.assert_not_called()
+        with self.assertRaisesRegex(ValueError, "action_leading_noncondition_layers"):
+            self.build(action_leading_noncondition_layers=1)
+        self.loader_mock.assert_not_called()
 
     def test_runtime_preserves_listconfig_controls_and_validation(self):
         video, action = tiny_configs()
@@ -206,13 +251,18 @@ class CompactActionFactoryTests(unittest.TestCase):
             model_id="test", tokenizer_model_id="test", video_dit_config=OmegaConf.create(video),
             action_dit_config=OmegaConf.create(action),
             action_scheduler={"train_shift": 5, "infer_shift": 5, "num_train_timesteps": 1000},
-            condition_layers=OmegaConf.create([0, 4, 8]),
+            condition_layers=OmegaConf.create([2, 5, 8]),
             action_noncondition_layers_per_interval=OmegaConf.create([1, 2]),
             action_trailing_noncondition_layers=0,
+            action_leading_noncondition_layers=1,
             device="cpu", model_dtype=torch.float32,
         )
         model = create_fasterwam(**kwargs)
-        self.assertEqual(model.action_layer_indices, (0, 1, 4, 5, 6, 8))
+        self.assertEqual(model.action_layer_indices, (0, 2, 3, 5, 6, 7, 8))
+        kwargs["action_leading_noncondition_layers"] = 1.5
+        with self.assertRaisesRegex(ValueError, "action_leading_noncondition_layers"):
+            create_fasterwam(**kwargs)
+        kwargs["action_leading_noncondition_layers"] = 1
         kwargs["action_noncondition_layers_per_interval"] = OmegaConf.create([1.5, 2])
         with self.assertRaises(ValueError):
             create_fasterwam(**kwargs)
@@ -222,7 +272,8 @@ class CompactActionFactoryTests(unittest.TestCase):
         with initialize_config_dir(config_dir=str(config_dir), version_base=None):
             cfg = compose(config_name="train", overrides=[
                 "task=libero_fasterwam_2cam224_1e-4",
-                "model.condition_layers=[0,12,24,28]",
+                "model.condition_layers=[5,12,24,28]",
+                "model.action_leading_noncondition_layers=2",
                 "model.action_noncondition_layers_per_interval=[2,3,1]",
                 "model.action_trailing_noncondition_layers=0",
                 "model.action_dit_pretrained_path=null",
@@ -232,7 +283,8 @@ class CompactActionFactoryTests(unittest.TestCase):
             result = instantiate(cfg.model, model_dtype=torch.float32, device="cpu")
         self.assertEqual(result, "constructed")
         arguments = constructor.call_args.kwargs
-        self.assertEqual(arguments["condition_layers"], [0, 12, 24, 28])
+        self.assertEqual(arguments["condition_layers"], [5, 12, 24, 28])
+        self.assertEqual(arguments["action_leading_noncondition_layers"], 2)
         self.assertEqual(arguments["action_noncondition_layers_per_interval"], [2, 3, 1])
         self.assertEqual(arguments["action_trailing_noncondition_layers"], 0)
         self.assertIsNone(arguments["action_dit_pretrained_path"])

@@ -267,6 +267,7 @@ def create_fasterwam(
     device: str = "cuda",
     action_noncondition_layers_per_interval=None,
     action_trailing_noncondition_layers=None,
+    action_leading_noncondition_layers=None,
 ):
     from .models.wan22.fasterwam import FasterWAM
 
@@ -342,6 +343,7 @@ def create_fasterwam(
         condition_layers=condition_layers,
         action_noncondition_layers_per_interval=action_noncondition_layers_per_interval,
         action_trailing_noncondition_layers=action_trailing_noncondition_layers,
+        action_leading_noncondition_layers=action_leading_noncondition_layers,
         video_kv_fusion=video_kv_fusion,
         video_kv_fusion_init=str(video_kv_fusion_init),
     )

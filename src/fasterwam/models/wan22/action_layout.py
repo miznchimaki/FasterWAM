@@ -12,6 +12,7 @@ class ActionLayout:
     action_condition_layers: tuple[int, ...]
     noncondition_layers_per_interval: tuple[int, ...]
     trailing_noncondition_layers: int
+    leading_noncondition_layers: int = 0
 
     @property
     def num_action_layers(self):
@@ -29,13 +30,14 @@ def resolve_action_layout(
     condition_layers,
     noncondition_layers_per_interval=None,
     trailing_noncondition_layers=None,
+    leading_noncondition_layers=None,
 ):
     """Select the first N video slots in each action-refinement interval.
 
     Condition indices always refer to VIDEO layers. Action-only blocks do not
     consume the video state at their slot; placement within a gap only gives a
-    deterministic mapping for retained pretrained weights. Leading layers, if
-    the first condition index is nonzero, retain their original full depth.
+    deterministic mapping for retained pretrained weights. Leading and trailing
+    counts select the first N available slots before/after the condition layers.
     None preserves all available layers; an integer applies to every gap, and
     a sequence specifies one positive count per adjacent condition pair.
     """
@@ -72,6 +74,16 @@ def resolve_action_layout(
                 f"video condition layers {conditions[index]} and {conditions[index + 1]}."
             )
 
+    leading_capacity = conditions[0]
+    leading = leading_capacity if leading_noncondition_layers is None else _integer(
+        leading_noncondition_layers, "action_leading_noncondition_layers",
+    )
+    if leading > leading_capacity:
+        raise ValueError(
+            f"`action_leading_noncondition_layers`={leading} exceeds {leading_capacity} available layers "
+            f"before video condition layer {conditions[0]}."
+        )
+
     tail_capacity = depth - conditions[-1] - 1
     tail = tail_capacity if trailing_noncondition_layers is None else _integer(
         trailing_noncondition_layers, "action_trailing_noncondition_layers",
@@ -82,11 +94,11 @@ def resolve_action_layout(
             f"after video condition layer {conditions[-1]}."
         )
 
-    retained = list(range(conditions[0]))
+    retained = list(range(leading))
     local_conditions = []
     for index, condition in enumerate(conditions):
         local_conditions.append(len(retained))
         retained.append(condition)
         count = counts[index] if index < len(counts) else tail
         retained.extend(range(condition + 1, condition + 1 + count))
-    return ActionLayout(depth, conditions, tuple(retained), tuple(local_conditions), counts, tail)
+    return ActionLayout(depth, conditions, tuple(retained), tuple(local_conditions), counts, tail, leading)

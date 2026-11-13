@@ -7,6 +7,8 @@ proprio_dim: ${data.train.processor.proprio_output_dim}
 redirect_common_files: true
 mot_checkpoint_mixed_attn: true
 condition_layers: [0, 4, 8, 12, 16, 20, 24, 28]
+# null keeps all layers before the first condition; integers allow 0..first condition.
+action_leading_noncondition_layers: null
 # null keeps all available layers (default: seven gaps of 3, then 1 tail layer).
 # An integer sets every gap; a list supplies one positive count per gap.
 action_noncondition_layers_per_interval: null

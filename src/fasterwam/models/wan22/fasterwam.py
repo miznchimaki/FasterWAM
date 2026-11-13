@@ -51,6 +51,7 @@ class FasterWAM(JointWAM):
         video_kv_fusion_init: str = "current_layer",
         action_noncondition_layers_per_interval: int | Sequence[int] | None = None,
         action_trailing_noncondition_layers: int | None = None,
+        action_leading_noncondition_layers: int | None = None,
     ):
         if video_dit_config is None:
             raise ValueError("`video_dit_config` is required for FasterWAM.")
@@ -84,6 +85,7 @@ class FasterWAM(JointWAM):
             condition_layers,
             noncondition_layers_per_interval=action_noncondition_layers_per_interval,
             trailing_noncondition_layers=action_trailing_noncondition_layers,
+            leading_noncondition_layers=action_leading_noncondition_layers,
         )
         normalized_condition_layers = layout.condition_layers
         action_dit_config = dict(action_dit_config)
