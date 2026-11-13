@@ -230,6 +230,9 @@ def load_fastwam_checkpoint(model, path, optimizer=None, *, lora_config_policy="
         raise TypeError("Checkpoint payload must be a mapping.")
     if "mot" in payload:
         component, module = "mot", model.mot
+        from .action_layout_checkpoint import validate_action_layout_metadata
+
+        validate_action_layout_metadata(model, payload)
     elif "dit" in payload:
         component, module = "dit", model.video_expert
     else:

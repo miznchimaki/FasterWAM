@@ -248,6 +248,11 @@ Set `learning_rates.video`, `learning_rates.action`, and
 See [component learning rates](docs/learning_rates.md) for parameter ownership,
 freeze/LoRA behavior, W&B metrics, and resume compatibility.
 
+To reduce action depth while preserving video condition layers, see
+[compact action DiT](docs/compact_action_dit.md) for interval/tail overrides,
+layer mappings, and checkpoint compatibility. Defaults retain the original
+30-layer action model.
+
 The LIBERO/RoboTwin wrappers and `train_zero1.sh` / `train_zero2.sh` / `train_zero3.sh` save the
 complete launcher and local worker stdout/stderr to `<output_dir>/train.log`,
 while also displaying it in the terminal. This includes training metrics,

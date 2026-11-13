@@ -5,7 +5,7 @@ from pathlib import Path
 
 import torch
 from hydra.utils import instantiate
-from omegaconf import DictConfig
+from omegaconf import DictConfig, ListConfig
 from PIL import Image
 import numpy as np
 from einops import repeat
@@ -265,6 +265,9 @@ def create_fasterwam(
     redirect_common_files: bool = True,
     model_dtype: torch.dtype = torch.bfloat16,
     device: str = "cuda",
+    action_noncondition_layers_per_interval=None,
+    action_trailing_noncondition_layers=None,
+    action_leading_noncondition_layers=None,
 ):
     from .models.wan22.fasterwam import FasterWAM
 
@@ -308,8 +311,12 @@ def create_fasterwam(
     if not isinstance(loss, dict):
         raise ValueError(f"`loss` must be dict-like, got {type(loss)}")
 
-    if isinstance(condition_layers, DictConfig):
+    if isinstance(condition_layers, (DictConfig, ListConfig)):
         condition_layers = OmegaConf.to_container(condition_layers, resolve=True)
+    if isinstance(action_noncondition_layers_per_interval, (DictConfig, ListConfig)):
+        action_noncondition_layers_per_interval = OmegaConf.to_container(
+            action_noncondition_layers_per_interval, resolve=True,
+        )
 
     return FasterWAM.from_wan22_pretrained(
         device=device,
@@ -334,6 +341,9 @@ def create_fasterwam(
         loss_lambda_video=float(loss.get("lambda_video", 1.0)),
         loss_lambda_action=float(loss.get("lambda_action", 1.0)),
         condition_layers=condition_layers,
+        action_noncondition_layers_per_interval=action_noncondition_layers_per_interval,
+        action_trailing_noncondition_layers=action_trailing_noncondition_layers,
+        action_leading_noncondition_layers=action_leading_noncondition_layers,
         video_kv_fusion=video_kv_fusion,
         video_kv_fusion_init=str(video_kv_fusion_init),
     )

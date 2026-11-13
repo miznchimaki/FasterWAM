@@ -7,6 +7,13 @@ proprio_dim: ${data.train.processor.proprio_output_dim}
 redirect_common_files: true
 mot_checkpoint_mixed_attn: true
 condition_layers: [0, 4, 8, 12, 16, 20, 24, 28]
+# null keeps all layers before the first condition; integers allow 0..first condition.
+action_leading_noncondition_layers: null
+# null keeps all available layers (default: seven gaps of 3, then 1 tail layer).
+# An integer sets every gap; a list supplies one positive count per gap.
+action_noncondition_layers_per_interval: null
+# 0 is allowed for the tail; upper bound is video depth - last condition - 1.
+action_trailing_noncondition_layers: null
 video_kv_fusion: interval_weighted_sum
 video_kv_fusion_init: current_layer
 action_dit_pretrained_path: checkpoints/SparseActionDiT_cond_0_4_8_12_16_20_24_28_Wan22_alphascale_1024hdim.pt
@@ -76,6 +83,8 @@ action_dit_config:
   action_dim: ${data.train.processor.action_output_dim}
   hidden_dim: 1024
   ffn_dim: 4096
+  # Dense reference depth, kept for pretrained-backbone compatibility.
+  # The factory derives actual compact depth from the interval/tail settings.
   num_layers: 30
   num_heads: 24
   noncondition_num_heads: 8
