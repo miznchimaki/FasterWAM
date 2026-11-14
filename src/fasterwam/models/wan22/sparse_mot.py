@@ -24,6 +24,7 @@ class SparseMoT(MoT):
         mot_checkpoint_mixed_attn: bool = True,
         video_kv_fusion: Optional[str] = None,
         video_kv_fusion_init: str = "current_layer",
+        action_layer_indices: Optional[Sequence[int]] = None,
     ):
         nn.Module.__init__(self)
         if not mixtures:
@@ -47,11 +48,6 @@ class SparseMoT(MoT):
         self.num_heads = int(video_expert.num_heads)
         self.attn_head_dim = int(video_expert.attn_head_dim)
 
-        if self.action_num_layers != self.num_layers:
-            raise ValueError(
-                "SparseMoT requires equal video/action depth: "
-                f"{self.num_layers} vs {self.action_num_layers}."
-            )
         if int(action_expert.attn_head_dim) != self.attn_head_dim:
             raise ValueError(
                 "SparseActionDiT `attn_head_dim` must match video expert: "
@@ -60,19 +56,27 @@ class SparseMoT(MoT):
 
         self.condition_layers = self._normalize_condition_layers(condition_layers, self.num_layers)
         self.condition_layer_set = frozenset(self.condition_layers)
+        # Public masks, fusion intervals and caches stay in video coordinates.
+        # Only action.blocks uses compact, contiguous local layer indices.
+        self.action_layer_indices = self._normalize_action_layer_indices(action_layer_indices)
+        self._video_to_action_layer = {
+            video_idx: action_idx for action_idx, video_idx in enumerate(self.action_layer_indices)
+        }
+        action_condition_layers = tuple(self._video_to_action_layer[idx] for idx in self.condition_layers)
         self.video_kv_fusion = self._normalize_video_kv_fusion(video_kv_fusion)
         self.video_kv_fusion_init = self._normalize_video_kv_fusion_init(video_kv_fusion_init)
         self.condition_intervals = self._build_condition_intervals(self.condition_layers)
         self._condition_layer_to_interval_idx = {
             layer_idx: interval_idx for interval_idx, layer_idx in enumerate(self.condition_layers)
         }
-        if hasattr(action_expert, "condition_layers") and tuple(action_expert.condition_layers) != self.condition_layers:
+        if hasattr(action_expert, "condition_layers") and tuple(action_expert.condition_layers) != action_condition_layers:
             raise ValueError(
-                "SparseMoT `condition_layers` must match SparseActionDiT condition layers: "
-                f"{list(self.condition_layers)} vs {list(action_expert.condition_layers)}."
+                "SparseMoT mapped condition layers must match SparseActionDiT local condition layers: "
+                f"{list(action_condition_layers)} vs {list(action_expert.condition_layers)}."
             )
 
-        for layer_idx, block in enumerate(action_expert.blocks):
+        for action_idx, block in enumerate(action_expert.blocks):
+            layer_idx = self.action_layer_indices[action_idx]
             expected_heads = (
                 int(action_expert.num_heads)
                 if layer_idx in self.condition_layer_set
@@ -104,9 +108,12 @@ class SparseMoT(MoT):
                 self.video_kv_fusion_logits.append(nn.Parameter(logits))
 
         logger.info(
-            "Initialized SparseMoT with layers=%d, condition_layers=%s, condition_heads=%d, "
+            "Initialized SparseMoT with video_layers=%d, action_layers=%d, action_layer_indices=%s, "
+            "condition_layers=%s, condition_heads=%d, "
             "noncondition_heads=%d, video_kv_fusion=%s",
             self.num_layers,
+            self.action_num_layers,
+            list(self.action_layer_indices),
             list(self.condition_layers),
             int(action_expert.num_heads),
             int(action_expert.noncondition_num_heads),
@@ -119,6 +126,30 @@ class SparseMoT(MoT):
                 name,
                 sum(p.numel() for p in expert.parameters()) / 1e9,
             )
+
+    def _normalize_action_layer_indices(self, action_layer_indices):
+        if action_layer_indices is None:
+            action_layer_indices = range(self.num_layers)
+        if isinstance(action_layer_indices, (str, bytes)):
+            raise ValueError("`action_layer_indices` must be a sequence of video layer indices.")
+        try:
+            indices = tuple(action_layer_indices)
+        except TypeError as exc:
+            raise ValueError("`action_layer_indices` must be a sequence of video layer indices.") from exc
+        if len(indices) != self.action_num_layers:
+            raise ValueError(
+                "`action_layer_indices` must map every action block exactly once: "
+                f"got {len(indices)} indices for {self.action_num_layers} action blocks."
+            )
+        if any(isinstance(idx, bool) or not isinstance(idx, int) or not 0 <= idx < self.num_layers
+               for idx in indices):
+            raise ValueError(f"`action_layer_indices` must contain integers in [0, {self.num_layers - 1}].")
+        if any(left >= right for left, right in zip(indices, indices[1:])):
+            raise ValueError("`action_layer_indices` must be strictly increasing without duplicates.")
+        missing = self.condition_layer_set - set(indices)
+        if missing:
+            raise ValueError(f"`action_layer_indices` must retain every condition layer; missing {sorted(missing)}.")
+        return indices
 
     @staticmethod
     def _normalize_condition_layers(
@@ -269,7 +300,7 @@ class SparseMoT(MoT):
 
     def _build_action_attention_io(self, tokens_all, freqs_all, t_mod_all, context_all, layer_idx: int):
         action_expert = self.mixtures["action"]
-        action_block = action_expert.blocks[layer_idx]
+        action_block = action_expert.blocks[self._video_to_action_layer[layer_idx]]
         (
             q_action,
             k_action,
@@ -323,13 +354,15 @@ class SparseMoT(MoT):
                 context_all=context_all,
                 layer_idx=layer_idx,
             )
-            action_io = self._build_action_attention_io(
-                tokens_all=tokens_all,
-                freqs_all=freqs_all,
-                t_mod_all=t_mod_all,
-                context_all=context_all,
-                layer_idx=layer_idx,
-            )
+            action_io = None
+            if layer_idx in self._video_to_action_layer:
+                action_io = self._build_action_attention_io(
+                    tokens_all=tokens_all,
+                    freqs_all=freqs_all,
+                    t_mod_all=t_mod_all,
+                    context_all=context_all,
+                    layer_idx=layer_idx,
+                )
 
             interval_kv.append({"k": video_io["k"], "v": video_io["v"]})
             video_mask = layer_attention_mask[:video_seq_len, :video_seq_len]
@@ -352,7 +385,7 @@ class SparseMoT(MoT):
                     num_heads=self.num_heads,
                 )
                 interval_kv = []
-            else:
+            elif action_io is not None:
                 mixed_action = self._mixed_attention_with_num_heads(
                     q_cat=action_io["q"],
                     k_cat=action_io["k"],
@@ -372,17 +405,18 @@ class SparseMoT(MoT):
                 mixed_slice=mixed_video,
                 context_payload=video_io["context_payload"],
             )
-            tokens_all["action"] = self._apply_post_with_optional_checkpoint(
-                block=action_io["block"],
-                residual_x=action_io["residual_x"],
-                gate_msa=action_io["gate_msa"],
-                shift_mlp=action_io["shift_mlp"],
-                scale_mlp=action_io["scale_mlp"],
-                gate_mlp=action_io["gate_mlp"],
-                use_gradient_checkpointing=action_io["use_gradient_checkpointing"],
-                mixed_slice=mixed_action,
-                context_payload=action_io["context_payload"],
-            )
+            if action_io is not None:
+                tokens_all["action"] = self._apply_post_with_optional_checkpoint(
+                    block=action_io["block"],
+                    residual_x=action_io["residual_x"],
+                    gate_msa=action_io["gate_msa"],
+                    shift_mlp=action_io["shift_mlp"],
+                    scale_mlp=action_io["scale_mlp"],
+                    gate_mlp=action_io["gate_mlp"],
+                    use_gradient_checkpointing=action_io["use_gradient_checkpointing"],
+                    mixed_slice=mixed_action,
+                    context_payload=action_io["context_payload"],
+                )
 
         return tokens_all
 
@@ -428,13 +462,15 @@ class SparseMoT(MoT):
                 context_all=context_all,
                 layer_idx=layer_idx,
             )
-            action_io = self._build_action_attention_io(
-                tokens_all=tokens_all,
-                freqs_all=freqs_all,
-                t_mod_all=t_mod_all,
-                context_all=context_all,
-                layer_idx=layer_idx,
-            )
+            action_io = None
+            if layer_idx in self._video_to_action_layer:
+                action_io = self._build_action_attention_io(
+                    tokens_all=tokens_all,
+                    freqs_all=freqs_all,
+                    t_mod_all=t_mod_all,
+                    context_all=context_all,
+                    layer_idx=layer_idx,
+                )
 
             if layer_idx in self.condition_layer_set:
                 q_cat = torch.cat([video_io["q"], action_io["q"]], dim=1)
@@ -458,13 +494,14 @@ class SparseMoT(MoT):
                     attention_mask=video_mask,
                     num_heads=self.num_heads,
                 )
-                mixed_action = self._mixed_attention_with_num_heads(
-                    q_cat=action_io["q"],
-                    k_cat=action_io["k"],
-                    v_cat=action_io["v"],
-                    attention_mask=None,
-                    num_heads=int(action_io["block"].num_heads),
-                )
+                if action_io is not None:
+                    mixed_action = self._mixed_attention_with_num_heads(
+                        q_cat=action_io["q"],
+                        k_cat=action_io["k"],
+                        v_cat=action_io["v"],
+                        attention_mask=None,
+                        num_heads=int(action_io["block"].num_heads),
+                    )
 
             tokens_all["video"] = self._apply_post_with_optional_checkpoint(
                 block=video_io["block"],
@@ -477,17 +514,18 @@ class SparseMoT(MoT):
                 mixed_slice=mixed_video,
                 context_payload=video_io["context_payload"],
             )
-            tokens_all["action"] = self._apply_post_with_optional_checkpoint(
-                block=action_io["block"],
-                residual_x=action_io["residual_x"],
-                gate_msa=action_io["gate_msa"],
-                shift_mlp=action_io["shift_mlp"],
-                scale_mlp=action_io["scale_mlp"],
-                gate_mlp=action_io["gate_mlp"],
-                use_gradient_checkpointing=action_io["use_gradient_checkpointing"],
-                mixed_slice=mixed_action,
-                context_payload=action_io["context_payload"],
-            )
+            if action_io is not None:
+                tokens_all["action"] = self._apply_post_with_optional_checkpoint(
+                    block=action_io["block"],
+                    residual_x=action_io["residual_x"],
+                    gate_msa=action_io["gate_msa"],
+                    shift_mlp=action_io["shift_mlp"],
+                    scale_mlp=action_io["scale_mlp"],
+                    gate_mlp=action_io["gate_mlp"],
+                    use_gradient_checkpointing=action_io["use_gradient_checkpointing"],
+                    mixed_slice=mixed_action,
+                    context_payload=action_io["context_payload"],
+                )
 
         return tokens_all
 
@@ -589,8 +627,8 @@ class SparseMoT(MoT):
 
         action_expert = self.mixtures["action"]
         x = action_tokens
-        for layer_idx in range(self.num_layers):
-            block = action_expert.blocks[layer_idx]
+        for action_idx, layer_idx in enumerate(self.action_layer_indices):
+            block = action_expert.blocks[action_idx]
             (
                 q_action,
                 k_action,

@@ -216,6 +216,18 @@ The caches are written to `data/text_embeds_cache_fasterwam/libero` and
 
 ### Launch training
 
+The FasterWAM model config defaults to **full video and action DiT training**:
+both experts have `freeze=false` and `lora.enabled=false`. Set
+`model.video_dit_config.freeze=true` or `model.action_dit_config.freeze=true`
+to freeze that backbone. LoRA takes precedence over freeze. The action expert's
+`action_encoder` and `head` always use dense, full-parameter training; custom
+LoRA targets cannot select them. Fusion and proprio parameters keep training. See
+[PEFT LoRA training](docs/lora_training.md) for installation, per-expert
+overrides, freezing, and checkpoint compatibility.
+Training checkpoints keep base and adapter weights unmerged. To export a
+separate dense checkpoint for evaluation, use the
+[offline LoRA merge script](docs/merge_lora_checkpoint.md).
+
 ```bash
 NPROC_PER_NODE=8 bash scripts/train_fasterwam_libero.sh
 
@@ -230,6 +242,16 @@ NPROC_PER_NODE=8 bash scripts/train_fasterwam_libero.sh \
   num_epochs=1 \
   wandb.enabled=true
 ```
+
+Set `learning_rates.video`, `learning_rates.action`, and
+`learning_rates.fusion` independently; all default to `learning_rate` (`1e-4`).
+See [component learning rates](docs/learning_rates.md) for parameter ownership,
+freeze/LoRA behavior, W&B metrics, and resume compatibility.
+
+To reduce action depth while preserving video condition layers, see
+[compact action DiT](docs/compact_action_dit.md) for interval/tail overrides,
+layer mappings, and checkpoint compatibility. Defaults retain the original
+30-layer action model.
 
 The LIBERO/RoboTwin wrappers and `train_zero1.sh` / `train_zero2.sh` / `train_zero3.sh` save the
 complete launcher and local worker stdout/stderr to `<output_dir>/train.log`,
@@ -276,6 +298,7 @@ size of 1,024 and the task's default five epochs:
 ```bash
 bash scripts/train_zero3.sh 4 \
   task=robotwin_fasterwam_3cam_384_1e-4 \
+  model.action_dit_config.lora.enabled=false \
   batch_size=8 \
   gradient_accumulation_steps=32 \
   mixed_precision=bf16 \
@@ -298,11 +321,17 @@ loading path: sharding begins at `Accelerator.prepare`, so each GPU must
 still fit the initial model before that point. ZeRO-3 also does not remove
 the need to fit activations for the selected microbatch.
 
+ZeRO-3 enables communication overlap. The supplied eight-GPU logs show that
+the previous configuration was slower than ZeRO-2 at the same microbatch;
+sharding saves memory and does not guarantee greater throughput. See the
+[measured comparison and controlled overlap A/B procedure](docs/zero3_performance.md).
+
 Checkpoint behavior:
 
 - All ranks participate in ZeRO-3 weight consolidation. Rank 0 writes the
   ordinary `checkpoints/weights/step_XXXXXX.pt` with the existing `mot` and
-  optional `proprio_encoder` payload, usable by the existing evaluation code.
+  optional `proprio_encoder` payload. LoRA runs additionally include adapter
+  weights and architecture metadata, loaded by this branch's evaluation code.
 - `resume=/path/to/checkpoints/state/step_XXXXXX` restores the distributed
   training state, including optimizer, scheduler, and recorded data progress.
   Keep the same ZeRO stage and GPU topology when resuming this state.

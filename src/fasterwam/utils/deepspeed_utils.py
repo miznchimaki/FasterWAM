@@ -87,4 +87,10 @@ def build_weights_checkpoint_payload(
     }
     if component == "mot" and getattr(model, "proprio_encoder", None) is not None:
         payload["proprio_encoder"] = _extract_component(state_dict, "proprio_encoder")
+    if component == "mot":
+        from .action_layout_checkpoint import get_action_layout_metadata
+        from .lora_checkpoint import get_lora_checkpoint_metadata
+
+        payload.update(get_action_layout_metadata(model))
+        payload.update(get_lora_checkpoint_metadata(model))
     return payload

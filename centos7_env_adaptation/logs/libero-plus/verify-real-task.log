@@ -1,0 +1,23 @@
+CONFIG bddl_files: /mnt/lustre/lizongshu/projects/FasterWAM/third_party/LIBERO-plus/libero/libero/bddl_files
+CONFIG init_states: /mnt/lustre/lizongshu/projects/FasterWAM/third_party/LIBERO-plus/libero/libero/init_files
+CONFIG assets: /mnt/lustre/lizongshu/projects/FasterWAM/third_party/LIBERO-plus/libero/libero/assets
+CHECK actual LIBERO-Plus package and benchmark import
+[robosuite WARNING] No private macro file found! (__init__.py:7)
+[robosuite WARNING] It is recommended to use a private macro file (__init__.py:8)
+[robosuite WARNING] To setup, run: python /mnt/lustre/lizongshu/projects/FasterWAM/.venvs/libero-plus/lib/python3.10/site-packages/robosuite/scripts/setup_macros.py (__init__.py:9)
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+PASS Plus package: /mnt/lustre/lizongshu/projects/FasterWAM/third_party/LIBERO-plus/libero/libero/__init__.py
+TASK libero_10/0: KITCHEN_SCENE3_turn_on_the_stove_and_put_the_moka_pot_on_it_table_1
+LANGUAGE turn on the stove and put the moka pot on it table 1
+BDDL (wrapper input): /mnt/lustre/lizongshu/projects/FasterWAM/third_party/LIBERO-plus/libero/libero/bddl_files/libero_10/KITCHEN_SCENE3_turn_on_the_stove_and_put_the_moka_pot_on_it_table_1.bddl
+/mnt/lustre/lizongshu/projects/FasterWAM/third_party/LIBERO-plus/libero/libero/benchmark/__init__.py:242: UserWarning: Environment variable TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD detected, since the`weights_only` argument was not explicitly passed to `torch.load`, forcing weights_only=False.
+  init_states = torch.load(init_states_path)
+PASS task metadata / initial states: 50 states
+CHECK scene assets / environment construction
+CHECK reset / initial state / neutral-action steps
+PASS camera agentview_image: {'shape': [224, 224, 3], 'dtype': 'uint8', 'min': 0, 'max': 255}
+PASS camera robot0_eye_in_hand_image: {'shape': [224, 224, 3], 'dtype': 'uint8', 'min': 2, 'max': 242}
+OUTPUT /mnt/lustre/lizongshu/projects/FasterWAM/.runtime/centos7/libero-plus/smoke/20261013_071240_524556
+PASS LIBERO-Plus real task: assets / init state / reset / step / two cameras / close

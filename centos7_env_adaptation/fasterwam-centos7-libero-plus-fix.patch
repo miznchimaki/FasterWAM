@@ -1,0 +1,952 @@
+diff --git a/environments/libero-plus/pyproject.toml b/environments/libero-plus/pyproject.toml
+--- a/environments/libero-plus/pyproject.toml
++++ b/environments/libero-plus/pyproject.toml
+@@ -51,6 +51,9 @@
+ [tool.uv]
+ package = false
+ environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
++# robosuite declares the GUI wheel, but LIBERO-Plus uses offscreen rendering.
++# The GUI and headless wheels both own cv2 and must not be installed together.
++exclude-dependencies = ["opencv-python"]
+ 
+ [tool.uv.extra-build-dependencies]
+ egl-probe = ["cmake==3.31.10"]
+diff --git a/environments/libero-plus/uv.lock b/environments/libero-plus/uv.lock
+--- a/environments/libero-plus/uv.lock
++++ b/environments/libero-plus/uv.lock
+@@ -7,6 +7,9 @@
+ supported-markers = [
+     "platform_machine == 'x86_64' and sys_platform == 'linux'",
+ ]
++
++[manifest]
++excludes = ["opencv-python"]
+ 
+ [[package]]
+ name = "absl-py"
+@@ -1067,18 +1070,6 @@
+ ]
+ 
+ [[package]]
+-name = "opencv-python"
+-version = "4.11.0.86"
+-source = { registry = "https://pypi.org/simple" }
+-dependencies = [
+-    { name = "numpy" },
+-]
+-sdist = { url = "https://files.pythonhosted.org/packages/17/06/68c27a523103dad5837dc5b87e71285280c4f098c60e4fe8a8db6486ab09/opencv-python-4.11.0.86.tar.gz", hash = "sha256:03d60ccae62304860d232272e4a4fda93c39d595780cb40b161b310244b736a4" }
+-wheels = [
+-    { url = "https://files.pythonhosted.org/packages/2c/8b/90eb44a40476fa0e71e05a0283947cfd74a5d36121a11d926ad6f3193cc4/opencv_python-4.11.0.86-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6b02611523803495003bd87362db3e1d2a0454a6a63025dc6658a9830570aa0d" },
+-]
+-
+-[[package]]
+ name = "opencv-python-headless"
+ version = "4.11.0.86"
+ source = { registry = "https://pypi.org/simple" }
+@@ -1341,7 +1332,6 @@
+     { name = "mujoco" },
+     { name = "numba" },
+     { name = "numpy" },
+-    { name = "opencv-python" },
+     { name = "pillow" },
+     { name = "scipy" },
+ ]
+diff --git a/scripts/setup/centos7/LIBERO_PLUS.zh-CN.md b/scripts/setup/centos7/LIBERO_PLUS.zh-CN.md
+new file mode 100644
+--- /dev/null
++++ b/scripts/setup/centos7/LIBERO_PLUS.zh-CN.md
+@@ -0,0 +1,103 @@
++# CentOS 7：恢复 LIBERO-Plus 原生依赖
++
++适用状态：`install_centos7.sh libero-plus` 已完成 Python/uv、包安装、
++LIBERO-Plus clone、assets.zip 下载/解压及配置生成，但最后 doctor 报错：
++
++- MuJoCo：`NoneType ... glGetError`；
++- robosuite：`libGL.so.1` 缺失；
++- Wand：`MagickWand shared library not found`。
++
++这三个问题分别涉及离屏图形后端、普通/无界面 OpenCV 共享 `cv2`
++命名空间、以及 Python Wand 之外的原生 ImageMagick。已经下载的资产无需重下。
++
++## 直接恢复
++
++应用补丁后，在仓库根目录和有 GPU 的计算节点执行：
++
++```bash
++(
++  set -o pipefail
++  MAX_JOBS=2 bash scripts/setup/repair_centos7_libero_plus.sh \
++    2>&1 | tee .runtime/centos7/libero-plus/repair-plus.log
++)
++```
++
++入口会依次完成：
++
++1. 在 `.venvs/libero-plus` 中修复 OpenCV 为唯一的
++   `opencv-python-headless==4.11.0.86`；重装只涉及 OpenCV，使用清华镜像。
++2. 按 `--profile libero-plus` 修补该环境自己的 MuJoCo DSO，配置私有
++   GLVND/NVIDIA EGL 库及 vendor JSON。默认只读验证已有 LIBERO GLVND
++   构建，再复制到 Plus 自己的 `native-libs` 并设置 Plus 的 RPATH。
++   不复制 LIBERO 的整个 runtime 或修复记录，不修改其动态库。
++3. 构建 Plus 专用 ImageMagick/MagickWand，支持 LIBERO-Plus 实际使用的
++   `PNG -> MagickMotionBlurImage -> PNG/OpenCV`，并运行该操作的 smoke test。
++4. 刷新 Plus 的启动器，持久化 EGL、vendor JSON、`MAGICK_HOME` 和
++   `WAND_MAGICK_LIBRARY_SUFFIX`；最后运行 doctor CUDA/实际 MuJoCo 渲染检查。
++
++缺少可复用的 LIBERO GLVND 构建时，会为 Plus 单独构建。若已有源构建的
++校验失败，入口会停止；不要用未经验证的目录绕过校验。如确实要重新构建
++独立的 Plus GLVND，执行：
++
++```bash
++MAX_JOBS=2 bash scripts/setup/repair_centos7_libero_plus.sh --build-glvnd
++```
++
++重复执行会校验并复用成功的原生构建。若仅最后 doctor 失败，保留日志，
++不要删除 `.runtime`、`.venvs`、`assets.zip` 或整套 LIBERO-Plus 源码。
++
++## ImageMagick 的隔离方式
++
++固定 ImageMagick 6.9.13-57、libpng 1.6.44、zlib 1.3.1；三个源包均校验
++SHA256。需要现有可用的 C 编译器、make、binutils 和 C 开发头文件，
++默认使用启动器中配置的 GCC。`MAX_JOBS` 默认 2。
++
++libpng/zlib 构建为私有 PIC 静态库，符号不向外导出，运行时不新放置
++`libz.so` 或 `libexpat.so`，避免重现之前 Python XML/zlib 的库冲突。
++最终仅在 Plus runtime 下提供带私有 RPATH 的 MagickWand/MagickCore；
++不修改系统 ImageMagick、系统 glibc 或已有 Conda 环境。
++
++该构建面向 benchmark 的 PNG/运动模糊 C API，不提供通用 `convert` 命令，
++也不启用 JPEG/PDF 等 benchmark 此路径不需要的 delegates。
++无需设置全局 `LD_LIBRARY_PATH`，无需为此重新 prepare Python。
++
++源码下载由新脚本开头的固定 HTTPS URL 指定。若计算节点无法下载，可先在
++能联网的机器下载相同文件，上传后直接使用 builder 的离线参数：
++
++```bash
++.runtime/centos7/libero-plus/run python \
++  scripts/setup/centos7/build_libero_plus_imagemagick.py --apply \
++  --source /path/to/ImageMagick-6.9.13-57.tar.xz \
++  --png-source /path/to/libpng-1.6.44.tar.xz \
++  --zlib-source /path/to/zlib-1.3.1.tar.gz
++```
++
++必须使用确切版本与匹配 SHA256，不能换其他版本文件。
++
++## 成功标准和后续使用
++
++日志应包括：
++
++- `PASS OpenCV: ... GUI=NONE`；
++- `PASS fresh EGL MuJoCo and robosuite imports`；
++- `PASS private Wand PNG -> motion blur -> PNG/OpenCV; Python XML/zlib intact`；
++- doctor 的 `PASS pinned packages / native imports`、`PASS PyTorch execution`、
++  `PASS MuJoCo rendering`，以及 `Doctor finished: 7 passed, 0 failed.`。
++
++这里验证基础环境和 benchmark 使用的 ImageMagick 操作，尚不代表全部
++LIBERO-Plus 任务、资产以及多 GPU 设备映射均已验收。
++
++```bash
++source .runtime/centos7/libero-plus/activate.sh
++# 或不修改当前 shell：
++.runtime/centos7/libero-plus/run bash scripts/eval_fasterwam_libero_plus.sh
++```
++
++评测脚本仍需要正常提供 `CKPT_PATH`、`DATASET_STATS_PATH` 等参数。
++`PYTHON_BIN` 应继续使用 `.venvs/libero-plus/bin/python`。
++已激活的终端需要重新 source；新 `run` 调用会直接采用更新后的配置。
++
++以后重新执行 `install_centos7.sh libero-plus` 时，更新后的 lock 会持续排除
++GUI OpenCV；已选择的图形修复会重新应用，私有 ImageMagick 会重新验证复用。
++自动恢复只对对应 profile 生效，默认的 `repair_libero_loader.py` 和
++`repair_libero_opencv.py` 不传 `--profile` 时仍处理原 LIBERO。
+diff --git a/scripts/setup/centos7/README.zh-CN.md b/scripts/setup/centos7/README.zh-CN.md
+--- a/scripts/setup/centos7/README.zh-CN.md
++++ b/scripts/setup/centos7/README.zh-CN.md
+@@ -288,6 +288,11 @@
+ 入口；不要在这套环境上重新运行未经适配的原安装脚本。
+ 
+ ## 5. 可选评测环境
++
++LIBERO-Plus 在 CentOS 7 下的 OpenCV / NVIDIA EGL / 原生 MagickWand
++修复入口见 [LIBERO_PLUS.zh-CN.md](LIBERO_PLUS.zh-CN.md)。已完成资产下载但
++最终 doctor 失败时，可执行 `bash scripts/setup/repair_centos7_libero_plus.sh`，
++继续修复现有环境，无需重新下载资产。
+ 
+ 只训练时无需安装下列环境。按你要跑的 benchmark 单独安装：
+ 
+diff --git a/scripts/setup/centos7/benchmark_post.sh b/scripts/setup/centos7/benchmark_post.sh
+--- a/scripts/setup/centos7/benchmark_post.sh
++++ b/scripts/setup/centos7/benchmark_post.sh
+@@ -27,15 +27,19 @@
+     fi
+     "${ENV_DIR}/bin/python" "${SETUP_DIR}/configure_libero.py" \
+       --source-root "${SOURCE_DIR}" --config-dir "${ROOT}/.runtime/${PROFILE}"
+-    if [[ "${PROFILE}" == libero ]]; then
+-      # Migrating the old dual-provider lock can remove shared cv2 files even
+-      # when headless metadata remains installed. Verify and repair that case.
+-      "${ENV_DIR}/bin/python" -I "${SETUP_DIR}/centos7/repair_libero_opencv.py" --repair
+-      # Reapply the opted-in ELF/host-EGL repair after uv replaces wheel files.
+-      if [[ -f "${ROOT}/.runtime/centos7/libero/loader-repair.json" ]]; then
+-        "${ENV_DIR}/bin/python" -I "${SETUP_DIR}/centos7/repair_libero_loader.py" --root "${ROOT}" --apply
+-      fi
++    # Migrating the old dual-provider lock can remove shared cv2 files even
++    # when headless metadata remains installed. Verify and repair both profiles.
++    "${ENV_DIR}/bin/python" -I "${SETUP_DIR}/centos7/repair_libero_opencv.py" --profile "${PROFILE}" --repair
++    # Reapply the opted-in ELF/host-EGL repair after uv replaces wheel files.
++    if [[ -f "${ROOT}/.runtime/centos7/${PROFILE}/loader-repair.json" ]]; then
++      "${ENV_DIR}/bin/python" -I "${SETUP_DIR}/centos7/repair_libero_loader.py" --root "${ROOT}" --profile "${PROFILE}" --apply
+     fi
++    if [[ "${PROFILE}" == libero-plus && -f "${ROOT}/.runtime/centos7/libero-plus/private-imagemagick/build.json" ]]; then
++      "${ENV_DIR}/bin/python" -I "${SETUP_DIR}/centos7/build_libero_plus_imagemagick.py" --apply
++    fi
++    # Repairs refresh these files in a subprocess; adopt the result before
++    # the installer's final doctor instead of retaining the old OSMesa env.
++    source "${ROOT}/.runtime/centos7/${PROFILE}/activate.sh"
+     ;;
+   robotwin)
+     SOURCE_DIR="${ROOT}/third_party/RoboTwin"
+diff --git a/scripts/setup/centos7/build_libero_glvnd.py b/scripts/setup/centos7/build_libero_glvnd.py
+--- a/scripts/setup/centos7/build_libero_glvnd.py
++++ b/scripts/setup/centos7/build_libero_glvnd.py
+@@ -242,9 +242,9 @@
+                 *, meson_wheel: str | Path | None = None,
+                 ninja_wheel: str | Path | None = None) -> Path:
+     """Return an owned libdir with matching libEGL/OpenGL/GLdispatch, reusing it safely."""
+-    if state.get('profile') != 'libero':
+-        raise RuntimeError('Private GLVND builder is scoped to the LIBERO runtime.')
+-    runtime = Path(state['root']) / '.runtime/centos7/libero'
++    if state.get('profile') not in ('libero', 'libero-plus'):
++        raise RuntimeError('Private GLVND builder is scoped to LIBERO and LIBERO-Plus runtimes.')
++    runtime = Path(state['root']) / '.runtime/centos7' / state['profile']
+     base = runtime / 'private-glvnd'
+     cache = runtime / 'glvnd-build'
+     for path in (runtime, base, cache):
+diff --git a/scripts/setup/centos7/build_libero_plus_imagemagick.py b/scripts/setup/centos7/build_libero_plus_imagemagick.py
+new file mode 100644
+--- /dev/null
++++ b/scripts/setup/centos7/build_libero_plus_imagemagick.py
+@@ -0,0 +1,305 @@
++#!/usr/bin/env python3
++"""Build a private MagickWand with PNG support for LIBERO-Plus on CentOS 7.
++
++LIBERO-plus 4976dc3 uses PNG -> MagickMotionBlurImage -> PNG, so a delegate-free
++ImageMagick is insufficient. Build private PIC static zlib/libpng, hide their
++symbols inside MagickCore, and publish only ImageMagick's shared libraries.
++This avoids replacing the base Python's libz/libexpat. No sudo, global loader
++variables, venv package installation, or changes to the LIBERO/core profiles.
++"""
++from __future__ import annotations
++
++import argparse
++import importlib.util
++import json
++import os
++from pathlib import Path, PurePosixPath
++import shlex
++import shutil
++import subprocess
++import sys
++import tarfile
++import tempfile
++
++def _sibling(name: str):
++    # Script directory is deliberately absent from sys.path with python -I.
++    spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(name + '.py'))
++    if spec is None or spec.loader is None:
++        raise RuntimeError(f'Cannot load setup helper: {name}')
++    module = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(module)
++    return module
++
++
++_helpers = _sibling('build_libero_glvnd')
++_artifact, _digest = _helpers._artifact, _helpers._digest
++_owned_directory, _run = _helpers._owned_directory, _helpers._run
++
++VERSION = '6.9.13-57'
++SOURCE_URL = f'https://download.imagemagick.org/releases/ImageMagick-{VERSION}.tar.xz'
++SOURCE_SHA256 = '339e92974a2a7ce5bec231ad0275cec886888b3e5f864ff5563b7eae85dff588'
++PNG_URL = 'https://download.sourceforge.net/libpng/libpng-1.6.44.tar.xz'
++PNG_SHA256 = '60c4da1d5b7f0aa8d158da48e8f8afa9773c1c8baa5d21974df61f1886b8ce8e'
++ZLIB_URL = 'https://zlib.net/fossils/zlib-1.3.1.tar.gz'
++ZLIB_SHA256 = '9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23'
++LIBRARIES = ('libMagickCore-6.Q16.so', 'libMagickWand-6.Q16.so')
++OPTIONS = (
++    '--enable-shared', '--disable-static', '--disable-openmp', '--disable-opencl',
++    '--disable-hdri', '--with-quantum-depth=16', '--without-modules',
++    '--without-magick-plus-plus', '--without-perl', '--disable-docs',
++    '--disable-dependency-tracking', '--with-png', '--with-zlib',
++    '--without-x', '--without-bzlib', '--without-zstd', '--without-autotrace',
++    '--without-dps', '--without-fftw', '--without-flif', '--without-fpx',
++    '--without-djvu', '--without-fontconfig', '--without-freetype',
++    '--without-raqm', '--without-gdi32', '--without-gslib', '--without-gvc',
++    '--without-heic', '--without-jbig', '--without-jpeg', '--without-lcms',
++    '--without-openjp2', '--without-lqr', '--without-lzma', '--without-openexr',
++    '--without-pango', '--without-raw', '--without-rsvg', '--without-tiff',
++    '--without-webp', '--without-wmf', '--without-xml',
++)
++
++
++def _extract(archive: Path, destination: Path, top: str) -> Path:
++    # Checksums above authenticate the source; still reject traversal/devices
++    # explicitly so this also works safely on Python 3.10 without tar filters.
++    with tarfile.open(archive, 'r:*') as stream:
++        members = stream.getmembers()
++        for member in members:
++            path = PurePosixPath(member.name)
++            if (not path.parts or path.is_absolute() or '..' in path.parts
++                    or path.parts[0] != top or not (member.isfile() or member.isdir())):
++                raise RuntimeError(f'Unexpected source archive member: {member.name}')
++        stream.extractall(destination, members=members)
++    return destination / top
++
++
++def _environment() -> dict[str, str]:
++    env = os.environ.copy()
++    # Configure tests and make run ordinary host executables: never make those
++    # processes consume our private glibc, conda headers or linker flags.
++    for key in ('LD_LIBRARY_PATH', 'LD_PRELOAD', 'LD_DEBUG', 'LD_DEBUG_OUTPUT',
++                'LD_RUN_PATH', 'PYTHONHOME', 'PYTHONPATH', 'LIBRARY_PATH',
++                'CPATH', 'C_INCLUDE_PATH', 'CPLUS_INCLUDE_PATH', 'CPPFLAGS',
++                'CFLAGS', 'CXXFLAGS', 'LDFLAGS', 'LIBS', 'PKG_CONFIG_PATH',
++                'PKG_CONFIG_LIBDIR', 'LT_SYS_LIBRARY_PATH', 'MAKEFLAGS',
++                'MAGICK_HOME', 'MAGICK_CONFIGURE_PATH', 'MAGICK_CODER_MODULE_PATH',
++                'MAGICK_FILTER_MODULE_PATH', 'WAND_MAGICK_LIBRARY_SUFFIX'):
++        env.pop(key, None)
++    env.update(PYTHONNOUSERSITE='1', CFLAGS='-O2 -fPIC', CXXFLAGS='-O2 -fPIC',
++               CONFIG_SITE='/dev/null', LC_ALL='C')
++    return env
++
++
++def _probe(prefix: Path, env: dict[str, str]) -> None:
++    env = env.copy()
++    env['MAGICK_HOME'] = str(prefix)
++    env['WAND_MAGICK_LIBRARY_SUFFIX'] = '-6.Q16'
++    code = r'''
++import ctypes, io, pathlib, sys, zlib
++import xml.etree.ElementTree as ET
++import numpy as np
++import cv2
++from PIL import Image
++ET.fromstring('<root/>')
++assert zlib.decompress(zlib.compress(b'before Wand')) == b'before Wand'
++from wand.api import library
++from wand.image import Image as WandImage
++from wand.version import MAGICK_VERSION
++prefix = pathlib.Path(sys.argv[1]).resolve()
++assert pathlib.Path(library._name).resolve().parent == prefix / 'lib', library._name
++print('MagickWand:', library._name, flush=True)
++print(MAGICK_VERSION, flush=True)
++pixels = np.zeros((224, 224, 3), dtype=np.uint8)
++pixels[40:180, 80:145] = [255, 60, 120]
++output = io.BytesIO()
++Image.fromarray(pixels).save(output, format='PNG')
++library.MagickMotionBlurImage.argtypes = (
++    ctypes.c_void_p, ctypes.c_double, ctypes.c_double, ctypes.c_double)
++with WandImage(blob=output.getvalue()) as image:
++    if not library.MagickMotionBlurImage(image.wand, 5.0, 2.0, 20.0):
++        image.raise_exception()
++        raise RuntimeError('MagickMotionBlurImage returned false')
++    result = cv2.imdecode(np.frombuffer(image.make_blob(), np.uint8), cv2.IMREAD_UNCHANGED)
++    assert result is not None and result.shape == pixels.shape, getattr(result, 'shape', None)
++    result = result[..., [2, 1, 0]]
++    assert np.any(result != pixels), 'Motion blur did not modify test image'
++ET.fromstring('<root/>')
++assert zlib.decompress(zlib.compress(b'after Wand')) == b'after Wand'
++print('PASS private Wand PNG -> motion blur -> PNG/OpenCV; Python XML/zlib intact', flush=True)
++'''
++    _run([sys.executable, '-I', '-B', '-u', '-c', code, str(prefix)], env=env, timeout=120)
++
++
++def _manifest_values() -> dict:
++    return {'source_sha256': SOURCE_SHA256, 'png_sha256': PNG_SHA256,
++            'zlib_sha256': ZLIB_SHA256, 'options': list(OPTIONS),
++            'configure_fix': 'preserve-explicit-static-delegate-flags-v1'}
++
++
++def _reusable(manifest: Path, base: Path, state: dict, env: dict) -> Path | None:
++    if not manifest.exists():
++        return None
++    if manifest.is_symlink():
++        raise RuntimeError(f'Refusing symlink manifest: {manifest}')
++    record = json.loads(manifest.read_text())
++    prefix = Path(record.get('prefix', ''))
++    if (record.get('profile') != 'libero-plus' or record.get('root') != state['root']
++            or prefix.parent != base or prefix.is_symlink() or prefix.resolve() != prefix
++            or any(record.get(k) != v for k, v in _manifest_values().items())):
++        raise RuntimeError(f'Unexpected private ImageMagick manifest: {manifest}')
++    for name in LIBRARIES:
++        target = (prefix / 'lib' / name).resolve()
++        if (target.parent != prefix / 'lib' or not target.is_file()
++                or _digest(target) != record.get('libraries', {}).get(name)):
++            raise RuntimeError(f'Private ImageMagick library changed or is missing: {target}')
++    _probe(prefix, env)
++    print(f'REUSE private ImageMagick: {prefix}', flush=True)
++    return prefix
++
++
++def build_imagemagick(state: dict, source_archive: str | Path | None = None, *,
++                      png_archive: str | Path | None = None,
++                      zlib_archive: str | Path | None = None) -> Path:
++    """Return a tested private ImageMagick prefix; never change runtime state."""
++    root = Path(state['root'])
++    runtime = root / '.runtime/centos7/libero-plus'
++    venv, private = root / '.venvs/libero-plus', runtime / 'python-base'
++    if (state.get('profile') != 'libero-plus' or not root.is_absolute() or root.resolve() != root
++            or state.get('venv') != str(venv) or state.get('private') != str(private)
++            or Path(sys.prefix) != venv or Path(sys.base_prefix) != private):
++        raise RuntimeError('Run this builder with this repository\'s .runtime/centos7/libero-plus/run python.')
++    for path in (runtime, venv, private):
++        if path.resolve() != path:
++            raise RuntimeError(f'Refusing symlink runtime path: {path}')
++    base, cache = runtime / 'private-imagemagick', runtime / 'imagemagick-build'
++    for path in (runtime, base, cache):
++        _owned_directory(path)
++    env = _environment()
++    manifest = base / 'build.json'
++    old = _reusable(manifest, base, state, env)
++    if old:
++        return old
++    compiler = shlex.split(env.get('CC', 'cc'))
++    make = shutil.which('make', path=env.get('PATH'))
++    if not compiler or not shutil.which(compiler[0], path=env.get('PATH')) or not make:
++        raise RuntimeError('Working host C compiler and make required; check FASTERWAM_GCC_ROOT.')
++    jobs = int(env.get('MAX_JOBS', '2'))
++    if jobs < 1:
++        raise RuntimeError('MAX_JOBS must be a positive integer.')
++    _run(compiler + ['--version'], env=env, timeout=30)
++    source_tar = _artifact(SOURCE_URL, SOURCE_SHA256, cache, f'ImageMagick-{VERSION}.tar.xz', source_archive)
++    png_tar = _artifact(PNG_URL, PNG_SHA256, cache, 'libpng-1.6.44.tar.xz', png_archive)
++    zlib_tar = _artifact(ZLIB_URL, ZLIB_SHA256, cache, 'zlib-1.3.1.tar.gz', zlib_archive)
++    work = Path(tempfile.mkdtemp(prefix='work-', dir=cache))
++    prefix = base / ('v' + VERSION + '-' + work.name.removeprefix('work-'))
++    dependencies = work / 'static-delegates'
++    zlib = _extract(zlib_tar, work, 'zlib-1.3.1')
++    png = _extract(png_tar, work, 'libpng-1.6.44')
++    source = _extract(source_tar, work, 'ImageMagick-' + VERSION)
++    # The release's generated configure advertises these override variables,
++    # but clears them immediately before PKG_CHECK_MODULES. Preserve their
++    # explicit values so the two private archives work without pkg-config and
++    # cannot accidentally resolve to system shared libraries. Only this fresh
++    # build-local configure file is changed, never an installed dependency.
++    configure = source / 'configure'
++    contents = configure.read_text()
++    for variable in ('PNG_CFLAGS', 'PNG_LIBS', 'ZLIB_CFLAGS', 'ZLIB_LIBS'):
++        old = variable + '=\"\"\n'
++        if contents.count(old) != 1:
++            raise RuntimeError(f'Unexpected pinned configure layout: {variable}')
++        contents = contents.replace(old, ': \"${' + variable + ':=}\"\n')
++    configure.write_text(contents)
++    _run(['/bin/sh', str(zlib / 'configure'), '--static', '--prefix=' + str(dependencies)],
++         env=env, cwd=zlib)
++    _run([make, '-j', str(jobs)], env=env, cwd=zlib)
++    _run([make, 'install'], env=env, cwd=zlib)
++    delegates_env = env.copy()
++    delegates_env.update(CPPFLAGS='-I' + str(dependencies / 'include'),
++                         LDFLAGS='-L' + str(dependencies / 'lib'),
++                         PKG_CONFIG_PATH=str(dependencies / 'lib/pkgconfig'),
++                         PKG_CONFIG_LIBDIR=str(dependencies / 'lib/pkgconfig'))
++    _run(['/bin/sh', str(png / 'configure'), '--prefix=' + str(dependencies),
++          '--libdir=' + str(dependencies / 'lib'), '--disable-shared', '--enable-static',
++          '--with-pic', '--disable-dependency-tracking'], env=delegates_env, cwd=png)
++    _run([make, '-j', str(jobs)], env=delegates_env, cwd=png)
++    _run([make, 'install'], env=delegates_env, cwd=png)
++    # Explicit archive filenames prevent accidentally linking system/conda
++    # delegates; exclude-libs prevents zlib/png symbols interposing on Python.
++    delegates_env.update(
++        LDFLAGS='-Wl,--exclude-libs,ALL',
++        PNG_CFLAGS='-I' + str(dependencies / 'include'),
++        PNG_LIBS=' '.join([str(dependencies / 'lib/libpng16.a'), str(dependencies / 'lib/libz.a'), '-lm']),
++        ZLIB_CFLAGS='-I' + str(dependencies / 'include'),
++        ZLIB_LIBS=str(dependencies / 'lib/libz.a'))
++    _run(['/bin/sh', str(source / 'configure'), '--prefix=' + str(prefix),
++          '--libdir=' + str(prefix / 'lib'), *OPTIONS], env=delegates_env, cwd=source)
++    config = (source / 'magick/magick-baseconfig.h').read_text()
++    for delegate in ('PNG', 'ZLIB'):
++        if '#define MAGICKCORE_' + delegate + '_DELEGATE 1' not in config:
++            raise RuntimeError(f'ImageMagick configure did not enable {delegate}; inspect config.log.')
++    _run([make, '-j', str(jobs)], env=delegates_env, cwd=source, timeout=1800)
++    staging = work / 'staging'
++    _run([make, 'install', 'DESTDIR=' + str(staging)], env=delegates_env, cwd=source)
++    installed = staging / str(prefix).lstrip('/')
++    # This prefix provides the C API to Wand, not host-glibc command-line tools.
++    # Removing the owned utilities prevents accidentally executing them after
++    # the shared objects have been adapted to private glibc.
++    if (installed / 'bin').exists():
++        shutil.rmtree(installed / 'bin')
++    hashes = {}
++    for name in LIBRARIES:
++        library = (installed / 'lib' / name).resolve()
++        if library.parent != installed / 'lib' or not library.is_file():
++            raise RuntimeError(f'ImageMagick did not produce required library: {name}')
++        needed = subprocess.check_output([state['patchelf'], '--print-needed', str(library)],
++                                         env=env, text=True).splitlines()
++        allowed = {'libm.so.6', 'libc.so.6', 'libpthread.so.0', 'libdl.so.2',
++                   'librt.so.1', 'libgcc_s.so.1', 'libMagickCore-6.Q16.so.7'}
++        if set(needed) - allowed:
++            raise RuntimeError(f'Unexpected ImageMagick shared dependency: {name}: {needed}')
++        rpath = ':'.join(dict.fromkeys([str(Path(state['loader']).parent),
++                                       str(prefix / 'lib'), *state['rpath']]))
++        _run([state['patchelf'], '--force-rpath', '--set-rpath', rpath, str(library)], env=env)
++        hashes[name] = _digest(library)
++    os.rename(installed, prefix)
++    _probe(prefix, env)
++    record = {**_manifest_values(), 'root': state['root'], 'profile': 'libero-plus',
++              'prefix': str(prefix), 'source_url': SOURCE_URL, 'png_url': PNG_URL,
++              'zlib_url': ZLIB_URL, 'compiler': compiler, 'libraries': hashes,
++              'imports_passed': True}
++    fd, temporary = tempfile.mkstemp(prefix='build.json.new-', dir=base)
++    try:
++        with os.fdopen(fd, 'w') as stream:
++            json.dump(record, stream, indent=2)
++            stream.write('\n')
++        os.replace(temporary, manifest)
++    finally:
++        if os.path.exists(temporary):
++            os.unlink(temporary)
++    print(f'BUILT private ImageMagick: {prefix}', flush=True)
++    return prefix
++
++
++def main() -> int:
++    root = Path(__file__).resolve().parents[3]
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--apply', action='store_true', help='Download/build or verify/reuse private ImageMagick')
++    parser.add_argument('--state', type=Path, default=root / '.runtime/centos7/libero-plus/state.json')
++    parser.add_argument('--source', help='Offline pinned ImageMagick source archive')
++    parser.add_argument('--png-source', help='Offline pinned libpng source archive')
++    parser.add_argument('--zlib-source', help='Offline pinned zlib source archive')
++    args = parser.parse_args()
++    if not args.apply:
++        print('Plan: build private ImageMagick ' + VERSION + ' with static PNG/zlib; use --apply.')
++        return 0
++    state = json.loads(args.state.read_text())
++    prefix = build_imagemagick(state, args.source, png_archive=args.png_source, zlib_archive=args.zlib_source)
++    _run([sys.executable, '-I', str(Path(__file__).with_name('runtime.py')),
++          'refresh-shell', '--state', str(args.state.resolve())], env=_environment())
++    print(f'MAGICK_HOME={prefix}')
++    print('Runtime launchers refreshed. Start a fresh run command or re-source activate.sh.')
++    return 0
++
++
++if __name__ == '__main__':
++    raise SystemExit(main())
+diff --git a/scripts/setup/centos7/repair_libero_loader.py b/scripts/setup/centos7/repair_libero_loader.py
+--- a/scripts/setup/centos7/repair_libero_loader.py
++++ b/scripts/setup/centos7/repair_libero_loader.py
+@@ -1,7 +1,8 @@
+ #!/usr/bin/env python3
+ """Repair owned MuJoCo ELF search paths and stage existing host EGL libraries.
+ 
+-Run with the private LIBERO Python from repo root. Without --apply, only print
++Run with the selected private LIBERO / LIBERO-Plus Python from repo root.
++Without --apply, only print
+ the plan. --build-glvnd explicitly permits downloading/building a private GLVND
+ dispatcher. No system-library changes, global LD_LIBRARY_PATH, or GPU rendering.
+ Rendering is verified separately by doctor.py --render.
+@@ -65,7 +66,7 @@
+     existing = [p for p in old.split(':') if p]
+     origins = [p for p in existing if '$ORIGIN' in p or '${ORIGIN}' in p]
+     values = [str(Path(state['loader']).parent),
+-              str(Path(state['root']) / '.runtime/centos7/libero/native-libs')]
++              str(Path(state['private']).parent / 'native-libs')]
+     values += origins or ['$ORIGIN']
+     values += state['rpath']
+     values += existing
+@@ -346,27 +347,33 @@
+ def main() -> int:
+     parser = argparse.ArgumentParser(description=__doc__)
+     parser.add_argument('--apply', action='store_true', help='Apply changes to the owned LIBERO environment')
++    parser.add_argument('--profile', choices=('libero', 'libero-plus'), default='libero')
+     parser.add_argument('--root', type=Path, default=Path.cwd())
+     parser.add_argument('--graphics-dir', action='append', default=[], help='Additional existing host graphics-library source directory; repeatable')
+     parser.add_argument('--glvnd-dir', type=Path, help='Existing coherent GLVND source lib directory; never fall back to host Mesa')
+     parser.add_argument('--build-glvnd', action='store_true', help='Download and build pinned GLVND privately (requires --apply)')
++    parser.add_argument('--reuse-glvnd-from', choices=('libero', 'libero-plus'),
++                        help='Read and verify another profile\'s built GLVND; only the selected target is modified')
+     parser.add_argument('--glvnd-source', type=Path, help='Verified local v1.7.0 source archive, for --build-glvnd without a GitHub download')
+     parser.add_argument('--meson-wheel', type=Path, help='Verified local Meson 1.5.2 wheel for an offline private build')
+     parser.add_argument('--ninja-wheel', type=Path, help='Verified local Ninja 1.11.1.4 Linux x86_64 wheel for an offline private build')
+     args = parser.parse_args()
+-    if args.build_glvnd and (not args.apply or args.glvnd_dir):
+-        parser.error('--build-glvnd requires --apply and cannot be combined with --glvnd-dir')
++    if args.build_glvnd and (not args.apply or args.glvnd_dir or args.reuse_glvnd_from):
++        parser.error('--build-glvnd requires --apply and cannot be combined with --glvnd-dir or --reuse-glvnd-from')
++    if args.reuse_glvnd_from and (not args.apply or args.glvnd_dir or args.reuse_glvnd_from == args.profile):
++        parser.error('--reuse-glvnd-from requires --apply, a different source profile, and no --glvnd-dir')
+     if (args.glvnd_source or args.meson_wheel or args.ninja_wheel) and not args.build_glvnd:
+         parser.error('--glvnd-source/--meson-wheel/--ninja-wheel requires --build-glvnd')
+     root = args.root.resolve()
+-    state_dir = root / '.runtime/centos7/libero'
++    profile = args.profile
++    state_dir = root / '.runtime/centos7' / profile
+     state = json.loads((state_dir / 'state.json').read_text())
+-    venv = root / '.venvs/libero'
++    venv = root / '.venvs' / profile
+     private = state_dir / 'python-base'
+-    if (state.get('root') != str(root) or state.get('profile') != 'libero'
++    if (state.get('root') != str(root) or state.get('profile') != profile
+             or state.get('venv') != str(venv) or state.get('private') != str(private)
+             or Path(sys.prefix) != venv or Path(sys.base_prefix) != private):
+-        raise RuntimeError('Use this repository\'s .runtime/centos7/libero/run python launcher.')
++        raise RuntimeError(f'Use this repository\'s .runtime/centos7/{profile}/run python launcher.')
+     if importlib.metadata.version('mujoco') != '3.3.2':
+         raise RuntimeError('This repair targets the locked mujoco==3.3.2.')
+     native = state_dir / 'native-libs'
+@@ -376,10 +383,37 @@
+         if path.is_symlink():
+             raise RuntimeError(f'Refusing symlink at owned repair path: {path}')
+     previous = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+-    if previous and previous.get('root') != str(root):
+-        raise RuntimeError('Repair manifest belongs to another repository.')
++    if previous and (previous.get('root') != str(root) or previous.get('profile') != profile):
++        raise RuntimeError('Repair manifest belongs to another repository or profile.')
+     extra_dirs = args.graphics_dir or previous.get('graphics_dirs', [])
+     glvnd_dir = args.glvnd_dir or previous.get('glvnd_dir')
++    if args.reuse_glvnd_from:
++        # Verify the source build in a fresh target-profile Python. Never invoke
++        # a source-profile launcher or rewrite any source manifest/library.
++        build_spec = importlib.util.spec_from_file_location(
++            'fasterwam_build_glvnd', Path(__file__).with_name('build_libero_glvnd.py'))
++        builder = importlib.util.module_from_spec(build_spec)
++        build_spec.loader.exec_module(builder)
++        source_dir = root / '.runtime/centos7' / args.reuse_glvnd_from
++        source_state = json.loads((source_dir / 'state.json').read_text())
++        if (source_dir.resolve() != source_dir or source_state.get('root') != str(root)
++                or source_state.get('profile') != args.reuse_glvnd_from
++                or source_state.get('private') != str(source_dir / 'python-base')):
++            raise RuntimeError('GLVND source runtime belongs to another repository/profile.')
++        build_base = source_dir / 'private-glvnd'
++        source_env = os.environ.copy()
++        for key in ('LD_LIBRARY_PATH', 'LD_PRELOAD', 'LD_DEBUG', 'LD_DEBUG_OUTPUT', 'PYTHONHOME', 'PYTHONPATH'):
++            source_env.pop(key, None)
++        glvnd_dir = builder._reusable(build_base / 'build.json', build_base, source_env)
++        if glvnd_dir is None:
++            raise RuntimeError('No verified source GLVND build; use --apply --build-glvnd for the target profile instead.')
++        source_repair = source_dir / 'loader-repair.json'
++        if source_repair.is_file():
++            source_record = json.loads(source_repair.read_text())
++            if (source_record.get('root') != str(root)
++                    or source_record.get('profile') != args.reuse_glvnd_from):
++                raise RuntimeError('GLVND source repair manifest has unexpected provenance.')
++            extra_dirs = list(dict.fromkeys([*extra_dirs, *source_record.get('graphics_dirs', [])]))
+     probe('private librt is loadable',
+           'import ctypes,sys; ctypes.CDLL(sys.argv[1]); print(sys.argv[1])',
+           'disable', str(Path(state['loader']).parent / 'librt.so.1'))
+@@ -400,7 +434,7 @@
+     # Save bookkeeping after each completed replacement, so interruptions can
+     # resume safely and later uv reinstallation can be repaired again.
+     record = dict(previous)
+-    record.update(root=str(root), profile='libero', graphics_dirs=extra_dirs)
++    record.update(root=str(root), profile=profile, graphics_dirs=extra_dirs)
+     record.setdefault('mujoco', {})
+     record.setdefault('graphics', {})
+     record.setdefault('originals', {})
+@@ -502,7 +536,7 @@
+     atomic_json(manifest_path, record)
+     subprocess.run([sys.executable, '-I', '-B', str(helper.with_name('runtime.py')),
+                     'refresh-shell', '--state', str(state_dir / 'state.json')], check=True)
+-    print('Loader repair completed. Validate actual rendering with doctor.py --profile libero --require-cuda --render under EGL.')
++    print(f'Loader repair completed. Validate actual rendering with doctor.py --profile {profile} --require-cuda --render under EGL.')
+     print(f'Original ELF backups: {backups}')
+     return 0
+ 
+diff --git a/scripts/setup/centos7/repair_libero_opencv.py b/scripts/setup/centos7/repair_libero_opencv.py
+--- a/scripts/setup/centos7/repair_libero_opencv.py
++++ b/scripts/setup/centos7/repair_libero_opencv.py
+@@ -1,8 +1,9 @@
+ #!/usr/bin/env python3
+-"""Keep exactly one headless OpenCV provider in the private LIBERO environment.
++"""Keep exactly one headless OpenCV provider in a private LIBERO environment.
+ 
+ Use .runtime/centos7/libero/run python <this-file> --repair after applying the
+-matching pyproject/lock fix. No GPU or rendering context is created here.
++matching pyproject/lock fix. For LIBERO-Plus, use its run launcher and add
++--profile libero-plus. No GPU or rendering context is created here.
+ """
+ from __future__ import annotations
+ 
+@@ -88,20 +89,26 @@
+ 
+ def main() -> None:
+     parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--profile", choices=("libero", "libero-plus"), default="libero",
++                        help="Private environment to check or repair (default: libero)")
+     parser.add_argument("--repair", action="store_true", help="Repair the two known conflicting providers")
+     args = parser.parse_args()
+     root = Path(__file__).resolve().parents[3]
+-    state_dir = root / ".runtime/centos7/libero"
++    state_dir = root / ".runtime/centos7" / args.profile
+     state = json.loads((state_dir / "state.json").read_text())
+-    venv = root / ".venvs/libero"
++    venv = root / ".venvs" / args.profile
+     private = state_dir / "python-base"
+-    if (state.get("root") != str(root) or state.get("profile") != "libero"
++    if (state.get("root") != str(root) or state.get("profile") != args.profile
+             or state.get("venv") != str(venv) or state.get("private") != str(private)
+             or Path(sys.prefix) != venv or Path(sys.base_prefix) != private):
+-        raise RuntimeError("Run this helper with this repository's private LIBERO Python only.")
++        raise RuntimeError(
++            f"Run this helper with this repository's private {args.profile} Python only: "
++            f".runtime/centos7/{args.profile}/run python "
++            "scripts/setup/centos7/repair_libero_opencv.py "
++            f"--profile {args.profile}")
+     uv = state_dir / "bin/uv"
+     if not uv.is_file() or not os.access(uv, os.X_OK):
+-        raise RuntimeError(f"Missing prepared LIBERO uv launcher: {uv}")
++        raise RuntimeError(f"Missing prepared {args.profile} uv launcher: {uv}")
+     ensure_headless(sys.executable, str(uv), versions(), args.repair)
+ 
+ 
+diff --git a/scripts/setup/centos7/runtime.py b/scripts/setup/centos7/runtime.py
+--- a/scripts/setup/centos7/runtime.py
++++ b/scripts/setup/centos7/runtime.py
+@@ -208,9 +208,10 @@
+     # backend selection. Keep the vendor route across refreshes and reinstall;
+     # a system Mesa ICD must not displace the staged NVIDIA vendor.
+     repair_path = state_dir / "loader-repair.json"
+-    if profile == "libero" and repair_path.is_file():
++    if profile in ("libero", "libero-plus") and repair_path.is_file():
+         repair = json.loads(repair_path.read_text())
+-        if repair.get("root") == str(root) and repair.get("graphics_mode") == "nvidia-glvnd":
++        if (repair.get("root") == str(root) and repair.get("profile") == profile
++                and repair.get("graphics_mode") == "nvidia-glvnd"):
+             vendor_json = state_dir / "egl-vendor/10_fasterwam_nvidia.json"
+             expected = {"file_format_version": "1.0.0", "ICD": {
+                 "library_path": str(state_dir / "native-libs/libEGL_nvidia.so.0")}}
+@@ -219,6 +220,19 @@
+                 raise RuntimeError(f"Invalid managed NVIDIA EGL vendor configuration: {vendor_json}")
+             env.update(MUJOCO_GL="egl", PYOPENGL_PLATFORM="egl",
+                        __EGL_VENDOR_LIBRARY_FILENAMES=str(vendor_json))
++    magick_record = state_dir / "private-imagemagick/build.json"
++    if profile == "libero-plus" and magick_record.is_file():
++        record = json.loads(magick_record.read_text())
++        prefix = Path(record.get("prefix", ""))
++        if (magick_record.resolve() != magick_record
++                or record.get("root") != str(root) or record.get("profile") != profile
++                or not record.get("imports_passed")
++                or prefix.parent != state_dir / "private-imagemagick"
++                or prefix.resolve() != prefix or not (prefix / "lib").is_dir()):
++            raise RuntimeError(f"Invalid managed ImageMagick build: {magick_record}")
++        # Wand opens absolute library paths beneath MAGICK_HOME. The builder
++        # patches those DSOs' own RPATH, so system shell tools need no new libc.
++        env.update(MAGICK_HOME=str(prefix), WAND_MAGICK_LIBRARY_SUFFIX="-6.Q16")
+     (state_dir / "bin").mkdir(exist_ok=True)
+     write_shell(state_dir / "activate.sh", activation_script(env, prefix_path, profile))
+     # uv pip's --python means install target, so use the venv here, not its base.
+diff --git a/scripts/setup/centos7/test_libero_plus_profile.py b/scripts/setup/centos7/test_libero_plus_profile.py
+new file mode 100644
+--- /dev/null
++++ b/scripts/setup/centos7/test_libero_plus_profile.py
+@@ -0,0 +1,152 @@
++#!/usr/bin/env python3
++"""CPU-only regressions for profile isolation and the LIBERO-Plus resume flow."""
++from __future__ import annotations
++
++import importlib.util
++import json
++import os
++from pathlib import Path
++import shutil
++import subprocess
++import sys
++import tempfile
++import unittest
++from unittest import mock
++
++HERE = Path(__file__).resolve().parent
++
++
++def module(name):
++    spec = importlib.util.spec_from_file_location(name, HERE / (name + '.py'))
++    result = importlib.util.module_from_spec(spec)
++    sys.modules[name] = result
++    spec.loader.exec_module(result)
++    return result
++
++
++runtime = module('runtime')
++loader = module('repair_libero_loader')
++
++
++class ProfileIsolation(unittest.TestCase):
++    def setUp(self):
++        self.temp = tempfile.TemporaryDirectory()
++        self.addCleanup(self.temp.cleanup)
++        self.root = Path(self.temp.name)
++
++    def state(self, profile):
++        directory = self.root / '.runtime/centos7' / profile
++        directory.mkdir(parents=True)
++        project = self.root / 'environments' / profile
++        project.mkdir(parents=True)
++        (project / 'uv.lock').write_text('registry = "https://pypi.org/simple"\n')
++        value = dict(root=str(self.root), profile=profile,
++                     venv=str(self.root / '.venvs' / profile),
++                     private=str(directory / 'python-base'),
++                     loader='/private-glibc/lib/ld-linux-x86-64.so.2',
++                     glibc='/private-glibc', uv='/usr/bin/true', rpath=['/private-glibc/lib'])
++        (directory / 'state.json').write_text(json.dumps(value))
++        return value, directory
++
++    def graphics(self, profile, directory):
++        vendor_dir = directory / 'egl-vendor'
++        vendor_dir.mkdir()
++        vendor = vendor_dir / '10_fasterwam_nvidia.json'
++        vendor.write_text(json.dumps({'file_format_version': '1.0.0', 'ICD': {
++            'library_path': str(directory / 'native-libs/libEGL_nvidia.so.0')}}))
++        (directory / 'loader-repair.json').write_text(json.dumps({
++            'root': str(self.root), 'profile': profile, 'graphics_mode': 'nvidia-glvnd'}))
++        return vendor
++
++    def test_target_rpath_and_origin_order(self):
++        for profile in ('libero', 'libero-plus'):
++            state, directory = self.state(profile)
++            paths = loader.desired_rpath(state, '$ORIGIN:/old').split(':')
++            self.assertEqual(paths[:3], ['/private-glibc/lib', str(directory / 'native-libs'), '$ORIGIN'])
++            self.assertEqual(paths.count('/private-glibc/lib'), 1)
++
++    def test_launchers_persist_target_graphics_and_magick(self):
++        state, directory = self.state('libero-plus')
++        vendor = self.graphics('libero-plus', directory)
++        prefix = directory / 'private-imagemagick/v-test'
++        (prefix / 'lib').mkdir(parents=True)
++        (prefix.parent / 'build.json').write_text(json.dumps({
++            'root': str(self.root), 'profile': 'libero-plus',
++            'prefix': str(prefix), 'imports_passed': True}))
++        with mock.patch.dict(os.environ, {'PATH': '/usr/bin:/bin', 'MUJOCO_GL': 'osmesa',
++                                         'PYOPENGL_PLATFORM': 'osmesa'}, clear=True):
++            runtime.write_shell_files(state)
++        child_env = dict(os.environ, LD_LIBRARY_PATH='/wrong-libs', PYTHONPATH='/wrong-python')
++        output = subprocess.check_output(['bash', str(directory / 'run'), '/usr/bin/env'], env=child_env, text=True)
++        env = dict(line.split('=', 1) for line in output.splitlines() if '=' in line)
++        self.assertEqual(env['MUJOCO_GL'], 'egl')
++        self.assertEqual(env['PYOPENGL_PLATFORM'], 'egl')
++        self.assertEqual(env['__EGL_VENDOR_LIBRARY_FILENAMES'], str(vendor))
++        self.assertEqual(env['MAGICK_HOME'], str(prefix))
++        self.assertEqual(env['WAND_MAGICK_LIBRARY_SUFFIX'], '-6.Q16')
++        self.assertEqual(env['VIRTUAL_ENV'], state['venv'])
++        self.assertNotIn('LD_LIBRARY_PATH', env)
++        self.assertNotIn('PYTHONPATH', env)
++
++    def test_libero_keeps_its_own_graphics(self):
++        state, directory = self.state('libero')
++        vendor = self.graphics('libero', directory)
++        with mock.patch.dict(os.environ, {'PATH': '/usr/bin:/bin'}, clear=True):
++            runtime.write_shell_files(state)
++        text = (directory / 'run').read_text()
++        self.assertIn(str(vendor), text)
++        self.assertNotIn('libero-plus', text)
++        self.assertNotIn('MAGICK_HOME', text)
++
++    def test_wrong_magick_profile_is_rejected(self):
++        state, directory = self.state('libero-plus')
++        prefix = directory / 'private-imagemagick/v-test'
++        (prefix / 'lib').mkdir(parents=True)
++        (prefix.parent / 'build.json').write_text(json.dumps({
++            'root': str(self.root), 'profile': 'libero', 'prefix': str(prefix), 'imports_passed': True}))
++        with self.assertRaisesRegex(RuntimeError, 'Invalid managed ImageMagick'):
++            runtime.write_shell_files(state)
++
++    def test_wrong_interpreter_rejected_before_repair(self):
++        state, directory = self.state('libero-plus')
++        argv = ['repair', '--root', str(self.root), '--profile', 'libero-plus', '--apply']
++        with mock.patch.object(sys, 'argv', argv), mock.patch.object(sys, 'prefix', '/other-venv'):
++            with self.assertRaisesRegex(RuntimeError, 'libero-plus/run'):
++                loader.main()
++        self.assertFalse((directory / 'loader-repair.json').exists())
++
++    def test_wrong_repair_manifest_profile_is_rejected(self):
++        state, directory = self.state('libero-plus')
++        (directory / 'loader-repair.json').write_text(json.dumps({'root': str(self.root), 'profile': 'libero'}))
++        argv = ['repair', '--root', str(self.root), '--profile', 'libero-plus', '--apply']
++        with mock.patch.object(sys, 'argv', argv), mock.patch.object(sys, 'prefix', state['venv']), \
++                mock.patch.object(sys, 'base_prefix', state['private']), \
++                mock.patch.object(loader.importlib.metadata, 'version', return_value='3.3.2'):
++            with self.assertRaisesRegex(RuntimeError, 'another repository or profile'):
++                loader.main()
++
++    def test_resume_uses_only_target_launcher(self):
++        state, directory = self.state('libero-plus')
++        script = self.root / 'scripts/setup/repair_centos7_libero_plus.sh'
++        script.parent.mkdir(parents=True)
++        shutil.copyfile(HERE.parent / script.name, script)
++        log = self.root / 'calls.txt'
++        (directory / 'run').write_text('#!/bin/bash\nprintf "%s\\n" "$*" >> "$TEST_CALLS"\n')
++        (directory / 'run').chmod(0o755)
++        source = self.root / '.runtime/centos7/libero/private-glvnd'
++        source.mkdir(parents=True)
++        (source / 'build.json').write_text('{}')
++        result = subprocess.run(['bash', str(script)], env=dict(os.environ, TEST_CALLS=str(log)),
++                                text=True, capture_output=True, check=True)
++        calls = log.read_text().splitlines()
++        self.assertEqual(len(calls), 4)
++        self.assertIn('--profile libero-plus --repair', calls[0])
++        self.assertIn('--profile libero-plus --apply --reuse-glvnd-from libero', calls[1])
++        self.assertIn('build_libero_plus_imagemagick.py --apply', calls[2])
++        self.assertIn('--profile libero-plus --require-cuda --render', calls[3])
++        self.assertEqual((source / 'build.json').read_text(), '{}')
++        self.assertIn('Ready:', result.stdout)
++
++
++if __name__ == '__main__':
++    unittest.main()
+diff --git a/scripts/setup/repair_centos7_libero_plus.sh b/scripts/setup/repair_centos7_libero_plus.sh
+new file mode 100644
+--- /dev/null
++++ b/scripts/setup/repair_centos7_libero_plus.sh
+@@ -0,0 +1,54 @@
++#!/usr/bin/env bash
++# Resume native-library repair for an already prepared LIBERO-Plus environment.
++set -euo pipefail
++SETUP_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
++ROOT="$(cd -- "${SETUP_DIR}/../.." && pwd)"
++cd "${ROOT}"
++
++BUILD_GLVND=0
++RENDER=1
++for arg in "$@"; do
++  case "${arg}" in
++    --build-glvnd) BUILD_GLVND=1 ;;
++    --skip-render) RENDER=0 ;;
++    --help|-h)
++      cat <<'HELP'
++Usage: bash scripts/setup/repair_centos7_libero_plus.sh [--build-glvnd] [--skip-render]
++Repair an existing private LIBERO-Plus environment, then run its doctor.
++By default reuse the verified LIBERO GLVND build as a read-only source;
++--build-glvnd builds a separate GLVND bundle for LIBERO-Plus instead.
++ImageMagick with PNG support is built privately and reused on later runs.
++--skip-render omits the final GPU/render check (not a full acceptance test).
++Existing asset downloads and LIBERO/core environments are not modified.
++HELP
++      exit 0 ;;
++    *) echo "Unknown option: ${arg}" >&2; exit 2 ;;
++  esac
++done
++
++RUN="${ROOT}/.runtime/centos7/libero-plus/run"
++[[ -x "${RUN}" ]] || {
++  echo "Missing ${RUN}; first prepare/install the CentOS 7 libero-plus profile." >&2
++  exit 1
++}
++
++"${RUN}" python -u "${SETUP_DIR}/centos7/repair_libero_opencv.py" \
++  --profile libero-plus --repair
++
++GLVND_ARGS=(--build-glvnd)
++if [[ "${BUILD_GLVND}" == 0 && -f "${ROOT}/.runtime/centos7/libero/private-glvnd/build.json" ]]; then
++  GLVND_ARGS=(--reuse-glvnd-from libero)
++fi
++"${RUN}" python -u "${SETUP_DIR}/centos7/repair_libero_loader.py" \
++  --root "${ROOT}" --profile libero-plus --apply "${GLVND_ARGS[@]}"
++
++# Each invocation re-enters the refreshed launcher; the builder and doctor
++# therefore see the private EGL vendor and, later, the managed MAGICK_HOME.
++"${RUN}" python -u "${SETUP_DIR}/centos7/build_libero_plus_imagemagick.py" --apply
++
++DOCTOR_ARGS=(--profile libero-plus)
++if [[ "${RENDER}" == 1 ]]; then
++  DOCTOR_ARGS+=(--require-cuda --render)
++fi
++"${RUN}" python -u "${SETUP_DIR}/centos7/doctor.py" "${DOCTOR_ARGS[@]}"
++echo "Ready: source ${ROOT}/.runtime/centos7/libero-plus/activate.sh"
