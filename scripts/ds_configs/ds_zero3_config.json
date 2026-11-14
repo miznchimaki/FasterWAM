@@ -10,7 +10,7 @@
     "offload_param": {
       "device": "none"
     },
-    "overlap_comm": false,
+    "overlap_comm": true,
     "contiguous_gradients": true,
     "reduce_bucket_size": 50000000,
     "stage3_prefetch_bucket_size": 50000000,

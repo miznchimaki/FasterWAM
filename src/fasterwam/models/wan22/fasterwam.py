@@ -3,9 +3,19 @@ from typing import Any, Optional, Sequence
 import torch
 
 from .sparse_action_dit import SparseActionDiT, DEFAULT_SPARSE_MOT_CONDITION_LAYERS
+from .action_layout import resolve_action_layout
 from .jointwam import JointWAM
 from .helpers.loader import load_wan22_ti2v_5b_components
 from .sparse_mot import SparseMoT
+from fasterwam.utils.lora import (
+    configure_expert_freeze,
+    configure_expert_lora,
+    split_dit_training_config,
+)
+from fasterwam.utils.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class FasterWAM(JointWAM):
@@ -39,6 +49,9 @@ class FasterWAM(JointWAM):
         mot_action_video_attention_layers: Optional[Sequence[int]] = None,
         video_kv_fusion: Optional[str] = None,
         video_kv_fusion_init: str = "current_layer",
+        action_noncondition_layers_per_interval: int | Sequence[int] | None = None,
+        action_trailing_noncondition_layers: int | None = None,
+        action_leading_noncondition_layers: int | None = None,
     ):
         if video_dit_config is None:
             raise ValueError("`video_dit_config` is required for FasterWAM.")
@@ -51,12 +64,30 @@ class FasterWAM(JointWAM):
         if action_dit_config is None:
             raise ValueError("`action_dit_config` is required for FasterWAM.")
 
+        # LoRA/freeze options are not constructor arguments of either dense DiT.
+        # Load the original pretrained weights before changing Linear modules.
+        video_dit_config, video_lora_config, video_freeze = split_dit_training_config(video_dit_config)
+        action_dit_config, action_lora_config, action_freeze = split_dit_training_config(action_dit_config)
+
         if condition_layers is None:
             condition_layers = action_dit_config.get("condition_layers", DEFAULT_SPARSE_MOT_CONDITION_LAYERS)
-        normalized_condition_layers = SparseActionDiT._normalize_condition_layers(
+        if condition_layers is None:
+            condition_layers = DEFAULT_SPARSE_MOT_CONDITION_LAYERS
+        video_num_layers = video_dit_config["num_layers"]
+        if action_dit_config["num_layers"] != video_num_layers:
+            raise ValueError(
+                "`action_dit_config.num_layers` is the dense reference depth and must match "
+                "`video_dit_config.num_layers`; use the action non-condition layer counts "
+                "to select the compact action depth."
+            )
+        layout = resolve_action_layout(
+            video_num_layers,
             condition_layers,
-            int(action_dit_config["num_layers"]),
+            noncondition_layers_per_interval=action_noncondition_layers_per_interval,
+            trailing_noncondition_layers=action_trailing_noncondition_layers,
+            leading_noncondition_layers=action_leading_noncondition_layers,
         )
+        normalized_condition_layers = layout.condition_layers
         action_dit_config = dict(action_dit_config)
         action_dit_config["condition_layers"] = list(normalized_condition_layers)
 
@@ -82,6 +113,14 @@ class FasterWAM(JointWAM):
         )
 
         video_expert = components.dit
+        if len(video_expert.blocks) != layout.video_num_layers:
+            raise ValueError("Loaded video DiT depth does not match the requested action layout.")
+        random_action_init = skip_dit_load_from_pretrain or not action_dit_pretrained_path
+        if random_action_init:
+            # Allocate only the retained blocks. Their local indices are dense;
+            # SparseMoT maps them to the original video-layer coordinates.
+            action_dit_config["num_layers"] = layout.num_action_layers
+            action_dit_config["condition_layers"] = list(layout.action_condition_layers)
         action_expert = SparseActionDiT.from_pretrained(
             action_dit_config=action_dit_config,
             action_dit_pretrained_path=action_dit_pretrained_path,
@@ -89,9 +128,18 @@ class FasterWAM(JointWAM):
             device=device,
             torch_dtype=torch_dtype,
         )
+        if not random_action_init and layout.num_action_layers != layout.video_num_layers:
+            # Existing offline backbone exports use dense video-layer indices.
+            # Load them with the original strict validation before selecting
+            # blocks, then inject LoRA only into the retained structure below.
+            action_expert.blocks = torch.nn.ModuleList(
+                [action_expert.blocks[index] for index in layout.action_layer_indices]
+            )
+            action_expert.condition_layers = layout.action_condition_layers
+            action_expert.condition_layer_set = frozenset(layout.action_condition_layers)
 
-        if int(len(action_expert.blocks)) != int(len(video_expert.blocks)):
-            raise ValueError("SparseActionDiT `num_layers` must match video expert.")
+        if len(action_expert.blocks) != layout.num_action_layers:
+            raise ValueError("Loaded action DiT depth does not match the requested action layout.")
         if int(action_expert.num_heads) != int(video_expert.num_heads):
             raise ValueError("SparseActionDiT condition-layer `num_heads` must match video expert.")
         if int(action_expert.attn_head_dim) != int(video_expert.attn_head_dim):
@@ -108,6 +156,7 @@ class FasterWAM(JointWAM):
             mot_checkpoint_mixed_attn=mot_checkpoint_mixed_attn,
             video_kv_fusion=video_kv_fusion,
             video_kv_fusion_init=video_kv_fusion_init,
+            action_layer_indices=layout.action_layer_indices,
         )
 
         model = cls(
@@ -132,6 +181,7 @@ class FasterWAM(JointWAM):
             mot_action_video_attention_layers=normalized_condition_layers,
         )
         model.condition_layers = normalized_condition_layers
+        model.action_layer_indices = layout.action_layer_indices
         model.model_paths = {
             "video_dit": components.dit_path,
             "vae": components.vae_path,
@@ -141,7 +191,23 @@ class FasterWAM(JointWAM):
                 "SKIPPED_PRETRAIN" if skip_dit_load_from_pretrain else action_dit_pretrained_path
             ),
             "condition_layers": list(normalized_condition_layers),
+            "action_layer_indices": list(layout.action_layer_indices),
+            "action_condition_layers": list(layout.action_condition_layers),
+            "action_num_layers": layout.num_action_layers,
             "video_kv_fusion": video_kv_fusion,
             "video_kv_fusion_init": video_kv_fusion_init,
         }
+        # Inject only after all original modules (including proprio) have been
+        # initialized, preserving the base initialization's RNG sequence.
+        configure_expert_lora(model.video_expert, video_lora_config)
+        configure_expert_lora(model.action_expert, action_lora_config)
+        configure_expert_freeze(model.video_expert, video_freeze, branch="video")
+        configure_expert_freeze(model.action_expert, action_freeze, branch="action")
+        logger.info(
+            "FasterWAM layer layout: video_depth=%d action_depth=%d "
+            "condition_video_layers=%s condition_action_layers=%s action_to_video_layers=%s",
+            layout.video_num_layers, layout.num_action_layers,
+            list(layout.condition_layers), list(layout.action_condition_layers),
+            list(layout.action_layer_indices),
+        )
         return model

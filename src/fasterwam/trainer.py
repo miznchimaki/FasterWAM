@@ -12,7 +12,7 @@ import torch
 from accelerate import Accelerator
 from omegaconf import DictConfig
 from PIL import Image
-from torch.optim.lr_scheduler import ConstantLR, CosineAnnealingLR, LinearLR, SequentialLR
+from torch.optim.lr_scheduler import ConstantLR, CosineAnnealingLR, LambdaLR, LinearLR, SequentialLR
 from torch.utils.data import DataLoader
 
 from .utils.deepspeed_utils import (
@@ -20,8 +20,12 @@ from .utils.deepspeed_utils import (
     get_deepspeed_config,
     get_deepspeed_stage,
 )
+from .utils.action_layout_checkpoint import get_action_layout_metadata, validate_action_layout_metadata
 from .utils.fs import ensure_dir
 from .utils.logging_config import get_logger, setup_logging
+from .utils.learning_rates import CosineDecay, build_component_param_groups, resolve_learning_rates
+from .utils.lora import apply_expert_trainability, get_expert_freeze, get_expert_lora_config
+from .utils.lora_checkpoint import get_lora_checkpoint_metadata
 from .utils.pytorch_utils import set_global_seed
 from .utils.samplers import ResumableEpochSampler
 from .utils.video_io import save_mp4
@@ -38,6 +42,7 @@ class Wan22Trainer:
         self.cfg = cfg
         self.output_dir = str(cfg.output_dir)
         self.learning_rate = float(cfg.learning_rate)
+        self.learning_rates = resolve_learning_rates(cfg)
         self.weight_decay = float(cfg.weight_decay)
         self.batch_size = int(cfg.batch_size)
         self.num_workers = int(cfg.num_workers)
@@ -113,12 +118,54 @@ class Wan22Trainer:
         # Freeze non-trainable modules before optimizer/deepspeed initialization.
         # This keeps DiT (+ optional proprio encoder) as trainable when ZeRO builds optimizer state.
         self._apply_dit_only_train_mode(self.model)
-        trainable_params = list(self.model.dit.parameters())
+        experts = [
+            expert for branch in ("video", "action")
+            if (expert := getattr(self.model, branch + "_expert", None)) is not None
+        ]
+        # Fusion/proprio parameters must not conceal an empty expert selection.
+        # Check before ZeRO replaces full tensors with rank-local partitions.
+        if experts and not any(p.requires_grad and p.numel() > 0 for expert in experts for p in expert.parameters()):
+            raise ValueError("Video and action DiT together have zero trainable parameters.")
+        trainable_named_params = [
+            ("dit." + name, parameter)
+            for name, parameter in self.model.dit.named_parameters()
+            if parameter.requires_grad
+        ]
         proprio_encoder = getattr(self.model, "proprio_encoder", None)
         if proprio_encoder is not None:
-            trainable_params.extend(list(proprio_encoder.parameters()))
+            trainable_named_params.extend(
+                ("proprio_encoder." + name, parameter)
+                for name, parameter in proprio_encoder.named_parameters()
+                if parameter.requires_grad
+            )
+        trainable_params = [parameter for _, parameter in trainable_named_params]
+        if not trainable_params:
+            raise ValueError("Training configuration selected no trainable parameters.")
+        # Capture before ZeRO replaces full parameter shapes with partitions.
+        self.training_lora_config = get_lora_checkpoint_metadata(self.model).get("lora")
+        self.training_action_layout = get_action_layout_metadata(self.model)
+        self.training_has_frozen_expert = any(
+            get_expert_freeze(expert) and not get_expert_lora_config(expert)["enabled"]
+            for expert in experts
+        )
+        self.trainable_parameter_spec = [
+            {"name": name, "shape": list(parameter.shape)}
+            for name, parameter in trainable_named_params
+        ]
+        saved_training_state = self._validate_resume_parameter_config()
+        optimizer_groups = self._configure_optimizer_groups(trainable_named_params, saved_training_state)
+        for branch in ("video", "action"):
+            expert = getattr(self.model, branch + "_expert", None)
+            if expert is not None:
+                logger.info(
+                    "%s DiT: lora=%s freeze_requested=%s freeze_effective=%s trainable=%d total=%d",
+                    branch, get_expert_lora_config(expert)["enabled"], get_expert_freeze(expert),
+                    get_expert_freeze(expert) and not get_expert_lora_config(expert)["enabled"],
+                    sum(p.numel() for p in expert.parameters() if p.requires_grad),
+                    sum(p.numel() for p in expert.parameters()),
+                )
         self.optimizer = torch.optim.AdamW(
-            trainable_params,
+            optimizer_groups,
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
             betas=(0.9, 0.95),
@@ -158,6 +205,45 @@ class Wan22Trainer:
 
         val_size = len(self.val_dataset) if self.val_dataset is not None else len(self.train_dataset)
         logger.info("Train/val dataset size: %d/%d", len(self.train_dataset), val_size)
+
+    def _configure_optimizer_groups(self, trainable_named_params, saved_training_state):
+        groups, group_spec = build_component_param_groups(
+            self.model, trainable_named_params, self.learning_rates,
+        )
+        saved_groups = (saved_training_state or {}).get("optimizer_groups")
+        is_full_resume = bool(self.resume and Path(str(self.resume)).is_dir())
+        self.legacy_optimizer_group = is_full_resume and (
+            saved_groups is None or [group.get("name") for group in saved_groups] == ["legacy"]
+        )
+        if self.legacy_optimizer_group:
+            if len({group["lr"] for group in groups}) != 1:
+                raise ValueError(
+                    "A legacy single-group full-state checkpoint requires equal learning rates "
+                    "for all active components. Use a weights-only .pt warm start to change "
+                    "to independent learning rates."
+                )
+            self.lr_group_indices = {group["name"]: 0 for group in groups}
+            # Preserve the old flat order, including proprio after all MoT params.
+            group_spec = [{"name": "legacy", "parameters": [name for name, _ in trainable_named_params]}]
+            groups = [{"params": [p for _, p in trainable_named_params], "lr": groups[0]["lr"]}]
+            logger.info("Restoring legacy single-group optimizer and LR scheduler for full-state resume.")
+        else:
+            self.lr_group_indices = {group["name"]: i for i, group in enumerate(groups)}
+        self.optimizer_group_spec = group_spec
+        if saved_groups is not None and saved_groups != group_spec:
+            raise ValueError(
+                "Full-state resume optimizer group names or parameter membership/order do not match. "
+                "Restore the original configuration or use a weights-only .pt warm start."
+            )
+        for name, index in self.lr_group_indices.items():
+            logger.info("Optimizer LR: lr_%s=%.6e", name, groups[index]["lr"])
+        return groups
+
+    def _current_learning_rates(self):
+        # Cache membership before prepare(): ZeRO-3 temporarily empties each
+        # group's params outside optimizer.step; that does not make it inactive.
+        return {name: float(self.optimizer.param_groups[index]["lr"])
+                for name, index in self.lr_group_indices.items()}
 
     def _init_wandb(self):
         if not self.wandb_enabled or not self.accelerator.is_main_process:
@@ -255,11 +341,14 @@ class Wan22Trainer:
 
         remaining_steps = max(total_train_steps - warmup_steps, 1)
         if scheduler_type == "cosine":
-            main_scheduler = CosineAnnealingLR(
-                self.optimizer,
-                T_max=remaining_steps,
-                eta_min=self.learning_rate * 0.01,
-            )
+            if self.legacy_optimizer_group:
+                main_scheduler = CosineAnnealingLR(
+                    self.optimizer,
+                    T_max=remaining_steps,
+                    eta_min=self.learning_rate * 0.01,
+                )
+            else:
+                main_scheduler = LambdaLR(self.optimizer, CosineDecay(remaining_steps))
         elif scheduler_type == "constant":
             main_scheduler = ConstantLR(self.optimizer, factor=1.0, total_iters=remaining_steps)
         else:
@@ -314,12 +403,46 @@ class Wan22Trainer:
         if not resume_path.exists():
             raise FileNotFoundError(f"Resume checkpoint not found: {self.resume}")
         logger.info("Loading weight checkpoint before optimizer initialization: %s", self.resume)
-        self.model.load_checkpoint(str(resume_path), optimizer=None)
+        load_kwargs = {"optimizer": None}
+        if "lora_config_policy" in inspect.signature(self.model.load_checkpoint).parameters:
+            # Evaluation may reconstruct adapters from a checkpoint; a training
+            # warm start must respect the experiment's explicitly chosen config.
+            load_kwargs["lora_config_policy"] = "match"
+        self.model.load_checkpoint(str(resume_path), **load_kwargs)
         logger.warning("Loaded .pt weights only; optimizer/scheduler/step start fresh.")
+
+    def _validate_resume_parameter_config(self):
+        if not self.resume or not Path(str(self.resume)).is_dir():
+            return
+        state_file = Path(str(self.resume)) / "trainer_state.json"
+        if not state_file.exists():
+            validate_action_layout_metadata(self.model, {})
+            if self.training_lora_config is not None or self.training_has_frozen_expert:
+                raise ValueError(
+                    "LoRA/freeze full-state resume requires trainer_state.json with matching "
+                    "trainable_parameters metadata; use a weights-only .pt warm start instead."
+                )
+            return
+        with state_file.open(encoding="utf-8") as handle:
+            saved = json.load(handle)
+        validate_action_layout_metadata(self.model, saved)
+        if saved.get("lora") != self.training_lora_config:
+            raise ValueError(
+                "Full-state resume LoRA configuration mismatch. Restore the original expert "
+                "enabled/r/alpha/dropout/target settings, or use a compatible weights-only .pt warm start."
+            )
+        if (self.training_lora_config is not None or self.training_has_frozen_expert) and "trainable_parameters" not in saved:
+            raise ValueError(
+                "LoRA/freeze full-state resume requires a trainable_parameters manifest to verify "
+                "optimizer compatibility; use a weights-only .pt warm start instead."
+            )
+        if "trainable_parameters" in saved and saved["trainable_parameters"] != self.trainable_parameter_spec:
+            raise ValueError("Full-state resume trainable parameter names, shapes, or optimizer order do not match.")
+        return saved
 
     def _set_dit_only_train_mode(self):
         # Match DiffSynth's freeze_except("dit"): only DiT stays trainable/in-train-mode.
-        logger.info("Setting DiT to train mode and freezing other model components.")
+        logger.info("Restoring DiT LoRA/freeze policies and training fusion/proprio; VAE/text encoder stay frozen.")
         model = self.accelerator.unwrap_model(self.model)
         self._apply_dit_only_train_mode(model)
 
@@ -329,6 +452,12 @@ class Wan22Trainer:
         model.requires_grad_(False)
         model.dit.train()
         model.dit.requires_grad_(True)
+        # Reapply expert masks after the broad unfreeze. SparseMoT owns these
+        # same objects; its separate fusion parameters stay trainable.
+        for branch in ("video", "action"):
+            expert = getattr(model, branch + "_expert", None)
+            if expert is not None:
+                apply_expert_trainability(expert)
         proprio_encoder = getattr(model, "proprio_encoder", None)
         if proprio_encoder is not None:
             proprio_encoder.train()
@@ -625,7 +754,11 @@ class Wan22Trainer:
             "global_step": int(self.global_step),
             "epoch": int(self.epoch),
             "batch_in_epoch": int(self.batch_in_epoch),
+            "lora": self.training_lora_config,
+            "trainable_parameters": self.trainable_parameter_spec,
+            "optimizer_groups": self.optimizer_group_spec,
         }
+        payload.update(self.training_action_layout)
         with open(state_file, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=True, indent=2)
 
@@ -649,6 +782,8 @@ class Wan22Trainer:
 
     def load_training_state(self, state_dir: str):
         self.accelerator.load_state(input_dir=state_dir)
+        logger.info("Restored optimizer learning rates: %s (full-state resume uses the saved LR/scheduler state)",
+                    " ".join(f"lr_{name}={lr:.6e}" for name, lr in self._current_learning_rates().items()))
         state_file = Path(state_dir) / "trainer_state.json"
         if state_file.exists():
             with open(state_file, "r", encoding="utf-8") as f:
@@ -743,10 +878,14 @@ class Wan22Trainer:
                     grad_norm_tensor = torch.tensor(grad_norm, device=loss.device, dtype=torch.float32)
                     global_grad_norm = float(self.accelerator.gather(grad_norm_tensor).mean().item())
 
-                    current_lr = float(self.optimizer.param_groups[0]["lr"])
-
                     if self.log_every > 0 and self.global_step % self.log_every == 0 and self.accelerator.is_main_process:
+                        current_lrs = self._current_learning_rates()
                         eta_str, steps_per_sec = self._estimate_eta()
+                        # global_step counts optimizer updates, not microbatches.
+                        samples_per_sec = (
+                            steps_per_sec * self.batch_size * self.accelerator.num_processes
+                            * self.gradient_accumulation_steps
+                        )
                         description = "[train] epoch=%d step=%d/%d loss=%.4f " % (
                             self.epoch,
                             self.global_step,
@@ -756,10 +895,10 @@ class Wan22Trainer:
                         if global_loss_metrics:
                             detail_str = " ".join([f"{k}={v:.4f}" for k, v in sorted(global_loss_metrics.items())])
                             description += detail_str + " "
-                        description += "lr=%.2e speed=%.2f step/s, %.2f samples/s eta=%s" % (
-                            current_lr,
+                        description += " ".join(f"lr_{name}={lr:.2e}" for name, lr in current_lrs.items()) + " "
+                        description += "speed=%.2f step/s, %.2f samples/s eta=%s" % (
                             steps_per_sec,
-                            steps_per_sec * self.batch_size * self.accelerator.num_processes,
+                            samples_per_sec,
                             eta_str,
                         )
                         logger.info(description)
@@ -767,10 +906,10 @@ class Wan22Trainer:
                         wandb_payload = {
                             "train/loss": global_loss,
                             "train/grad_norm": global_grad_norm,
-                            "train/lr": current_lr,
                             "performance/steps_per_sec": steps_per_sec,
-                            "performance/samples_per_sec": steps_per_sec * self.batch_size * self.accelerator.num_processes,
+                            "performance/samples_per_sec": samples_per_sec,
                         }
+                        wandb_payload.update({f"train/lr_{name}": lr for name, lr in current_lrs.items()})
                         for key, value in global_loss_metrics.items():
                             wandb_payload[f"train/{key}"] = value
                         self._wandb_log(wandb_payload)
