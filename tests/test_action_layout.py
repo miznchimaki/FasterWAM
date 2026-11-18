@@ -36,6 +36,19 @@ class ActionLayoutTests(unittest.TestCase):
         self.assertEqual(resolve_action_layout(5, [0, 4], 1, 0).action_layer_indices, (0, 1, 4))
         self.assertEqual(resolve_action_layout(1, [0], [], 0).num_action_layers, 1)
 
+    def test_zero_gap_counts_preserve_conditions(self):
+        conditions = tuple(range(0, 30, 4))
+        for counts in (0, [0] * 7):
+            with self.subTest(counts=counts):
+                layout = resolve_action_layout(30, conditions, counts, 0, 0)
+                self.assertEqual(layout.action_layer_indices, conditions)
+                self.assertEqual(layout.action_condition_layers, tuple(range(8)))
+        # Zero gaps do not implicitly remove the default trailing block.
+        self.assertEqual(resolve_action_layout(30, conditions, 0).action_layer_indices, conditions + (29,))
+        mixed = resolve_action_layout(30, [5, 12, 24, 28], [0, 2, 0], 0, 0)
+        self.assertEqual(mixed.action_layer_indices, (5, 12, 13, 14, 24, 28))
+        self.assertEqual(mixed.action_condition_layers, (0, 1, 4, 5))
+
     def test_leading_count_defaults_and_local_condition_remapping(self):
         for count, prefix in ((None, (0, 1, 2, 3, 4)), (5, (0, 1, 2, 3, 4)),
                               (2, (0, 1)), (0, ())):
@@ -63,11 +76,12 @@ class ActionLayoutTests(unittest.TestCase):
             (30, [0, True], None, None), (30, [0, 4.0], None, None),
             (30, "0,4", None, None), (0, [0], None, None),
             (True, [0], None, None), (30.0, [0], None, None),
-            (30, [0, 4], 0, None), (30, [0, 4], -1, None),
+            (30, [0, 4], False, None), (30, [0, 4], -1, None),
             (30, [0, 4], True, None), (30, [0, 4], 1.5, None),
             (30, [0, 4], "1", None), (30, [0, 4], 4, None),
             (30, [0, 4], [], None), (30, [0, 4], [1, 1], None),
-            (30, [0, 4], [0], None), (30, [0, 4], [False], None),
+            (30, [0, 4], [-1], None), (30, [0, 4], [False], None),
+            (30, [0, 4], [0.0], None),
             (30, [0, 12, 24, 28], [1, 1, 4], None),
             (30, [0, 28], 1, -1), (30, [0, 28], 1, 2),
             (30, [0, 28], 1, True), (30, [0, 28], 1, 0.5),
