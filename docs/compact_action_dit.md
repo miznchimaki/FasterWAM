@@ -24,8 +24,9 @@ action_trailing_noncondition_layers: null
   last condition layer; an integer sets their count. Zero is allowed here.
 - `condition_layers` continues to use **video layer indices**. It must be
   nonempty, strictly increasing, and within the video depth. Each pair must
-  leave at least one non-condition slot, and its requested count must satisfy
-  `1 <= count <= next_condition - current_condition - 1`.
+  leave at least one available **video** slot between condition indices.
+  The number of **action** blocks retained in that gap can be zero:
+  `0 <= count <= next_condition - current_condition - 1`.
 - The tail must satisfy `0 <= count <= video_num_layers - last_condition - 1`.
   Counts must be integers, not booleans or floating-point values. A list must
   contain exactly `len(condition_layers) - 1` entries.
@@ -43,6 +44,7 @@ For 30 video layers, representative layouts are:
 | same | 2 | 1 | 23 |
 | same | 1 | 1 | 16 |
 | same | 1 | 0 | 15 |
+| same | 0 | 0 | 8 (all condition blocks) |
 | `[0,12,24,28]` | 1 | 1 | 8 |
 
 Append these overrides to the existing training command for a randomly
@@ -53,6 +55,21 @@ model.action_dit_pretrained_path=null \
 model.action_noncondition_layers_per_interval=1 \
 model.action_trailing_noncondition_layers=1
 ```
+
+To retain only the **eight default condition blocks** in the random-action
+experiment, append:
+
+```bash
+model.action_dit_pretrained_path=null \
+model.action_leading_noncondition_layers=0 \
+model.action_noncondition_layers_per_interval=0 \
+model.action_trailing_noncondition_layers=0
+```
+
+The scalar gap count is equivalent to
+`'model.action_noncondition_layers_per_interval=[0,0,0,0,0,0,0]'`.
+Local action blocks 0–7 use the original video condition indices 0, 4, …, 28.
+Leaving the tail at `null` would retain an extra action block at video index 29.
 
 For an 8-layer action model with four condition layers:
 

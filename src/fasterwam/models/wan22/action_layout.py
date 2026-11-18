@@ -39,7 +39,7 @@ def resolve_action_layout(
     deterministic mapping for retained pretrained weights. Leading and trailing
     counts select the first N available slots before/after the condition layers.
     None preserves all available layers; an integer applies to every gap, and
-    a sequence specifies one positive count per adjacent condition pair.
+    a sequence specifies one nonnegative count per adjacent condition pair.
     """
     depth = _integer(video_num_layers, "video_num_layers", 1)
     if not isinstance(condition_layers, Sequence) or isinstance(condition_layers, (str, bytes)):
@@ -57,16 +57,16 @@ def resolve_action_layout(
     if noncondition_layers_per_interval is None:
         counts = capacities
     elif isinstance(noncondition_layers_per_interval, int):
-        count = _integer(noncondition_layers_per_interval, field, 1)
+        count = _integer(noncondition_layers_per_interval, field)
         counts = (count,) * len(capacities)
     elif isinstance(noncondition_layers_per_interval, Sequence) and not isinstance(
         noncondition_layers_per_interval, (str, bytes)
     ):
-        counts = tuple(_integer(count, field, 1) for count in noncondition_layers_per_interval)
+        counts = tuple(_integer(count, field) for count in noncondition_layers_per_interval)
         if len(counts) != len(capacities):
             raise ValueError(f"`{field}` needs {len(capacities)} counts for {len(conditions)} condition layers, got {len(counts)}.")
     else:
-        raise ValueError(f"`{field}` must be null, a positive integer, or a sequence of positive integers.")
+        raise ValueError(f"`{field}` must be null, a nonnegative integer, or a sequence of nonnegative integers.")
     for index, (count, capacity) in enumerate(zip(counts, capacities)):
         if count > capacity:
             raise ValueError(

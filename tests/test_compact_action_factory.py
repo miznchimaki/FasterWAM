@@ -20,6 +20,7 @@ from fasterwam.models.wan22.sparse_mot import SparseMoT
 from fasterwam.models.wan22.wan_video_dit import WanVideoDiT
 from fasterwam.runtime import create_fasterwam
 from fasterwam.utils.lora import configure_expert_freeze, configure_expert_lora
+from test_lora import forward_mot, inputs_for
 
 
 def tiny_configs():
@@ -84,6 +85,41 @@ class CompactActionFactoryTests(unittest.TestCase):
                 self.assertEqual(model.action_layer_indices, (0, 1, 4, 5, 8, 9))
                 self.assertEqual(model.condition_layers, (0, 4, 8))
                 self.assertEqual(model.action_expert.condition_layers, (0, 2, 4))
+
+    def test_condition_only_action_trains_and_matches_cached_inference(self):
+        # Exercise the experiment's real layer counts with CPU-sized blocks.
+        self.addCleanup(torch.set_num_threads, torch.get_num_threads())
+        torch.set_num_threads(1)
+        torch.manual_seed(29)
+        video, action = tiny_configs()
+        video["num_layers"] = action["num_layers"] = 30
+        conditions = tuple(range(0, 30, 4))
+        model = self.build(video=video, action=action, condition_layers=conditions,
+                           action_leading_noncondition_layers=0, action_noncondition_layers_per_interval=0,
+                           action_trailing_noncondition_layers=0)
+        self.assertEqual(len(model.video_expert.blocks), 30)
+        self.assertEqual(len(model.action_expert.blocks), 8)
+        self.assertEqual(model.action_layer_indices, conditions)
+        self.assertEqual(model.action_expert.condition_layers, tuple(range(8)))
+        self.assertTrue(all(hasattr(block, "cross_attn") for block in model.action_expert.blocks))
+        self.assertEqual(model.mot.condition_intervals, ((0,),) + tuple(
+            tuple(range(end - 3, end + 1)) for end in conditions[1:]
+        ))
+
+        inputs = inputs_for(torch.float32)
+        _, joint_action = forward_mot(model.mot, inputs)
+        joint_action.square().mean().backward()
+        # The action loss still reaches every condition block and the video K/V fusion.
+        for param in [block.self_attn.q.weight for block in model.action_expert.blocks] + [
+            model.mot.video_kv_fusion_logits[1], model.video_expert.blocks[1].self_attn.v.weight,
+        ]:
+            self.assertIsNotNone(param.grad)
+            self.assertTrue(torch.isfinite(param.grad).all())
+            self.assertGreater(param.grad.abs().max().item(), 0)
+        model.eval()
+        with torch.no_grad():
+            cached_action = forward_mot(model.mot, inputs, cached=True)
+        torch.testing.assert_close(cached_action, joint_action.detach(), rtol=2e-5, atol=2e-6)
 
     def test_pretrained_dense_backbone_selects_exact_retained_block_weights(self):
         video_config, action_config = tiny_configs()
